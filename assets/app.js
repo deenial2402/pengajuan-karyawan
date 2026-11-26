@@ -64,7 +64,7 @@ const App = (() => {
   function watermark(u) {
     if (!u) return;
     const txt = `${u.name} · Ops ${u.ops || u.id}`;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="340" height="170"><text x="18" y="104" transform="rotate(-24 170 85)" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="rgba(15,94,99,0.085)">${esc(txt)}</text></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="340" height="170"><text x="18" y="104" transform="rotate(-24 170 85)" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="rgba(238,77,45,0.10)">${esc(txt)}</text></svg>`;
     let el = document.getElementById('wm');
     if (!el) {
       el = document.createElement('div');

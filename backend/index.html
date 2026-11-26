@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f5e63">
+<meta name="theme-color" content="#EE4D2D">
 <link rel="icon" href="/icon-192.png">
-<title>Backend · Pengajuan Karyawan</title>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>Palangka Raya DC · Backend</title>
 <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
@@ -19,8 +21,8 @@ const V = { tab: 'todo', reqs: [], users: null, month: today().slice(0, 7), q: '
 
 /* ---------- Login ---------- */
 function viewLogin() {
-  return `<section class="auth"><form class="sheet" onsubmit="doLogin(event)">
-    <h1>Backend</h1>
+  return `<section class="auth"><div class="brand-mark">PKY</div><form class="sheet" onsubmit="doLogin(event)">
+    <h1>Palangka Raya DC · Backend</h1>
     <p class="meta">Khusus Team Leader, Admin, dan Superadmin. Gunakan ID atau Ops ID dan password dari spreadsheet.</p>
     <label>ID atau Ops ID<input name="login" autocomplete="username" autocapitalize="characters" required></label>
     <label>Password<input name="pin" type="password" autocomplete="current-password" required></label>

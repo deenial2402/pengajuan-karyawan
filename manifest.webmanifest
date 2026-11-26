@@ -1,1 +1,20 @@
-{"name":"Pengajuan Karyawan","short_name":"Pengajuan","start_url":"/","display":"standalone","background_color":"#f4f6f8","theme_color":"#0f5e63","lang":"id","icons":[{"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},{"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}
+{
+  "id": "/",
+  "name": "Palangka Raya DC · Pengajuan Karyawan",
+  "short_name": "PKY DC",
+  "description": "Pengajuan cuti, sakit, tukar shift, tambah hari kerja, dan berhalangan hadir.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F5F5",
+  "theme_color": "#EE4D2D",
+  "lang": "id",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

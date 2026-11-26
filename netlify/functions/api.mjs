@@ -189,7 +189,7 @@ async function exportXlsx(u, url) {
   ws.mergeCells(1, 1, 1, cols.length);
   const title = ws.getCell('A1');
   title.value = `Rekap Pengajuan Karyawan — ${month === 'all' ? 'Semua periode' : month}`;
-  title.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF0F5E63' } };
+  title.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FFEE4D2D' } };
 
   ws.mergeCells(2, 1, 2, cols.length);
   const wm = ws.getCell('A2');
@@ -198,7 +198,7 @@ async function exportXlsx(u, url) {
 
   const hr = ws.addRow(cols.map((c) => c.h));
   hr.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
-  hr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F5E63' } };
+  hr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEE4D2D' } };
 
   rows.forEach((r, i) => {
     const row = ws.addRow(cols.map((c) => c.v(r, i)));
