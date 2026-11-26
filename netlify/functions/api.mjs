@@ -8,7 +8,8 @@ import { readAll, appendOne, updateOne, LABEL } from '../lib/history.mjs';
 const BACKEND_ROLES = ['tl', 'admin', 'superadmin'];
 const TYPES = ['cuti', 'sakit', 'tukar', 'tambah', 'izin'];
 const RANGE_TYPES = ['cuti', 'sakit']; // hanya ini yang boleh rentang tanggal
-const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Shift', tambah: 'Tambah Hari Kerja', izin: 'Berhalangan Hadir' };
+const SHIFT_TYPES = ['sakit', 'izin']; // hanya ini yang memakai shift
+const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Tanggal', tambah: 'Tambah Hari Kerja', izin: 'Berhalangan Hadir' };
 const ACT = { approve: 'menyetujui', reject: 'menolak', check: 'sudah memeriksa', return: 'mengembalikan' };
 const TZ = 'Asia/Makassar';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -75,18 +76,29 @@ async function createRequest(u, req) {
   if (!b || !TYPES.includes(b.type)) return fail('Jenis pengajuan tidak valid');
 
   const from = String(b.from || '');
-  const to = RANGE_TYPES.includes(b.type) ? String(b.to || from) : from;
-  if (!DATE.test(from) || !DATE.test(to)) return fail('Tanggal tidak valid');
-  if (from < today()) return fail('Tanggal tidak boleh sebelum hari ini');
-  if (to < from) return fail('Tanggal selesai harus sama atau setelah tanggal mulai');
+  if (!DATE.test(from)) return fail('Tanggal tidak valid');
+
+  let to = from;
+  if (RANGE_TYPES.includes(b.type)) to = String(b.to || from);
+  if (b.type === 'tukar') {
+    // Tukar tanggal: tanggal kerja yang ditukar (from) dan tanggal pengganti (to). Tidak memakai shift.
+    to = String(b.to || '');
+    if (!DATE.test(to)) return fail('Isi tanggal pengganti');
+    if (to === from) return fail('Tanggal pengganti harus berbeda dari tanggal yang ditukar');
+  }
+  if (!DATE.test(to)) return fail('Tanggal tidak valid');
+  if (from < today() || to < today()) return fail('Tanggal tidak boleh sebelum hari ini');
+  if (b.type !== 'tukar' && to < from) return fail('Tanggal selesai harus sama atau setelah tanggal mulai');
 
   const note = String(b.note || '').trim();
   if (!note) return fail('Alasan wajib diisi');
 
-  const shift = Number(b.shift) || 1;
-  const shift2 = b.type === 'tukar' ? Number(b.shift2) || null : null;
+  // Shift hanya untuk Sakit dan Berhalangan Hadir.
+  const shift = SHIFT_TYPES.includes(b.type) ? Number(b.shift) : null;
+  if (SHIFT_TYPES.includes(b.type) && ![1, 2, 3].includes(shift)) return fail('Pilih shift');
+
   const partner = String(b.partner || '').trim();
-  if (b.type === 'tukar' && (!partner || !shift2 || shift2 === shift)) return fail('Lengkapi rekan dan shift tujuan');
+  if (b.type === 'tukar' && !partner) return fail('Isi nama rekan yang menukar');
 
   const photos = Array.isArray(b.photos) ? b.photos.slice(0, 3) : [];
   for (const p of photos) {
@@ -106,7 +118,7 @@ async function createRequest(u, req) {
     from,
     to,
     shift,
-    shift2,
+    shift2: null,
     partner: partner.slice(0, 120),
     note: note.slice(0, 1000),
     photos: photos.length,
@@ -166,9 +178,9 @@ async function exportXlsx(u, url) {
     { h: 'Jenis', w: 18, v: (r) => T[r.type] },
     { h: 'Nama', w: 24, v: (r) => r.name },
     { h: 'Ops ID', w: 12, v: (r) => r.ops },
-    { h: 'Mulai', w: 13, v: (r) => r.from },
-    { h: 'Selesai', w: 13, v: (r) => r.to },
-    { h: 'Shift', w: 22, v: (r) => `Shift ${r.shift}${r.shift2 ? ' → Shift ' + r.shift2 : ''}` },
+    { h: 'Tanggal / ditukar', w: 14, v: (r) => r.from },
+    { h: 'Sampai / pengganti', w: 16, v: (r) => r.to },
+    { h: 'Shift', w: 14, v: (r) => (r.shift ? `Shift ${r.shift}` : '-') },
     { h: 'Rekan', w: 20, v: (r) => r.partner || '' },
     { h: 'Alasan', w: 40, v: (r) => r.note },
     { h: 'Status', w: 26, v: (r) => LABEL[r.status] || r.status },

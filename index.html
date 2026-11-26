@@ -15,8 +15,16 @@
 <div id="toast"></div>
 <script src="/assets/app.js"></script>
 <script>
-const { S, $, esc, fd, today, shiftTag, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES } = App;
-const RANGE = ['cuti', 'sakit'];
+const { S, $, esc, fd, today, shiftTag, when, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES } = App;
+const RANGE = ['cuti', 'sakit'];        // rentang tanggal
+const SHIFT_TYPES = ['sakit', 'izin'];  // hanya ini yang memakai pilihan shift
+const KIND_HINT = {
+  cuti: 'Libur pada rentang tanggal',
+  sakit: 'Tidak masuk karena sakit',
+  tukar: 'Tukar tanggal kerja dengan rekan',
+  tambah: 'Menambah hari kerja',
+  izin: 'Tidak bisa hadir pada shift tertentu',
+};
 const V = { tab: 'form', type: 'cuti', note: '', photos: [], reqs: [] };
 
 /* ---------- Login ---------- */
@@ -47,23 +55,31 @@ async function doLogin(e) {
 function setType(t) { V.type = t; render(); }
 
 function viewForm() {
-  const u = S.user, t = V.type, two = RANGE.includes(t);
-  const sel = (c) => [1, 2, 3].map((s) => `<option value="${s}" ${s == c ? 'selected' : ''}>Shift ${s} · ${SH[s]}</option>`).join('');
-  const shiftField = t === 'tukar' ? '' : `<label>Shift<select name="shift">${sel(1)}</select></label>`;
+  const t = V.type, u = S.user;
+  const hasRange = RANGE.includes(t);
+  const sel = [1, 2, 3].map((n) => `<option value="${n}">Shift ${n} · ${SH[n]}</option>`).join('');
+  const now = today();
+  let dates;
+  if (t === 'tukar') {
+    dates = `<div class="row">
+      <label>Tanggal kerja yang ditukar<input type="date" name="from" min="${now}" value="${now}" required></label>
+      <label>Tanggal pengganti<input type="date" name="to" min="${now}" value="${now}" required></label></div>`;
+  } else if (hasRange) {
+    dates = `<div class="row">
+      <label>Mulai<input type="date" name="from" min="${now}" value="${now}" required></label>
+      <label>Sampai<input type="date" name="to" min="${now}" value="${now}" required></label></div>`;
+  } else {
+    dates = `<label>Tanggal<input type="date" name="from" min="${now}" value="${now}" required></label>`;
+  }
+  const noteLabel = t === 'cuti' ? 'Alasan cuti' : t === 'sakit' ? 'Keluhan' : 'Alasan';
   return `<h2>Buat pengajuan</h2>
-  <div class="types">${Object.entries(T).map(([k, n]) => `<button type="button" class="chip ${k === t ? 'on' : ''}" onclick="setType('${k}')">${n}</button>`).join('')}</div>
+  <div class="kinds">${Object.entries(T).map(([k, n]) => `<button type="button" class="kind ${k === t ? 'on' : ''}" onclick="setType('${k}')"><b>${n}</b><span>${KIND_HINT[k]}</span></button>`).join('')}</div>
   <form class="sheet" onsubmit="send(event)">
     <div class="who"><span>${esc(u.name)}</span><span>Ops ${esc(u.ops || '-')}</span></div>
-    <div class="row">
-      <label>${two ? 'Mulai' : 'Tanggal'}<input type="date" name="from" min="${today()}" value="${today()}" required></label>
-      ${two ? `<label>Sampai<input type="date" name="to" min="${today()}" value="${today()}" required></label>` : ''}
-    </div>
-    ${t === 'tukar' ? `<div class="row">
-        <label>Shift saya<select name="shift">${sel(1)}</select></label>
-        <label>Pindah ke<select name="shift2">${sel(2)}</select></label>
-      </div>
-      <label>Nama rekan yang menukar<input name="partner" required></label>` : shiftField}
-    <label>${t === 'cuti' ? 'Alasan cuti' : t === 'sakit' ? 'Keluhan' : 'Alasan'}<textarea name="note" required oninput="V.note=this.value">${esc(V.note)}</textarea></label>
+    ${dates}
+    ${SHIFT_TYPES.includes(t) ? `<label>Shift<select name="shift">${sel}</select></label>` : ''}
+    ${t === 'tukar' ? `<label>Nama rekan yang menukar<input name="partner" required></label>` : ''}
+    <label>${noteLabel}<textarea name="note" required oninput="V.note=this.value">${esc(V.note)}</textarea></label>
     <div class="field">
       <span class="lbl">${t === 'sakit' ? 'Foto surat dokter' : 'Foto pendukung'} (opsional, maks. 3)</span>
       <input id="fi" type="file" accept="image/*" multiple hidden onchange="addPh(this)">
@@ -78,8 +94,16 @@ async function send(e) {
   e.preventDefault();
   const g = (n) => e.target.elements[n]?.value;
   const t = V.type;
-  if (t === 'tukar' && g('shift') === g('shift2')) return toast('Shift tujuan harus berbeda');
-  const body = { type: t, from: g('from'), to: g('to'), shift: g('shift'), shift2: g('shift2'), partner: g('partner'), note: g('note'), photos: V.photos };
+  const body = {
+    type: t,
+    from: g('from'),
+    to: g('to') || g('from'),
+    shift: g('shift'),
+    partner: g('partner'),
+    note: g('note'),
+    photos: V.photos,
+  };
+  if (t === 'tukar' && body.from === body.to) return toast('Tanggal pengganti harus berbeda dari tanggal yang ditukar');
   try {
     await api('requests', body);
     toast('Pengajuan terkirim ke Team Leader');
@@ -135,10 +159,10 @@ function reqCard(r) {
   const [lbl, cls] = ST[r.status] || [r.status, ''];
   return `<article class="item ${cls}">
     <div class="row1">
-      <div><h3>${T[r.type]}</h3><div class="meta">${fd(r.from)}${r.to !== r.from ? ' – ' + fd(r.to) : ''}</div></div>
+      <div><h3>${T[r.type]}</h3><div class="meta">${when(r)}</div></div>
       <span class="st ${cls}">${lbl}</span>
     </div>
-    <div class="meta" style="margin-top:6px">${shiftTag(r.shift)}${r.shift2 ? ' → ' + shiftTag(r.shift2) : ''}${r.partner ? ' · Rekan: ' + esc(r.partner) : ''}</div>
+    <div class="meta" style="margin-top:6px">${shiftTag(r.shift)}${r.partner ? (r.shift ? ' · ' : '') + 'Rekan: ' + esc(r.partner) : ''}</div>
     <p>${esc(r.note)}</p>
     ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">Lihat ${r.photos} foto</button>` : ''}
     ${r.log.map((l) => `<div class="log">${esc(l.by)} ${ACT[l.action]}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}

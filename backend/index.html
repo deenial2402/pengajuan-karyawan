@@ -15,7 +15,7 @@
 <div id="toast"></div>
 <script src="/assets/app.js"></script>
 <script>
-const { S, $, esc, fd, today, shiftTag, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES } = App;
+const { S, $, esc, fd, today, shiftTag, when, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES } = App;
 const TABS = [['todo', 'Antrian'], ['all', 'Semua'], ['rekap', 'Rekap'], ['users', 'Pengguna']];
 const V = { tab: 'todo', reqs: [], users: null, month: today().slice(0, 7), q: '' };
 
@@ -63,10 +63,10 @@ function card(r) {
   return `<article class="item ${cls}">
     <div class="row1">
       <div><h3>${T[r.type]} · ${esc(r.name)}</h3>
-        <div class="meta">Ops ${esc(r.ops || '-')} · ${fd(r.from)}${r.to !== r.from ? ' – ' + fd(r.to) : ''}</div></div>
+        <div class="meta">Ops ${esc(r.ops || '-')} · ${when(r)}</div></div>
       <span class="st ${cls}">${lbl}</span>
     </div>
-    <div class="meta" style="margin-top:6px">${shiftTag(r.shift)}${r.shift2 ? ' → ' + shiftTag(r.shift2) : ''}${r.partner ? ' · Rekan: ' + esc(r.partner) : ''}</div>
+    <div class="meta" style="margin-top:6px">${shiftTag(r.shift)}${r.partner ? (r.shift ? ' · ' : '') + 'Rekan: ' + esc(r.partner) : ''}</div>
     <p>${esc(r.note)}</p>
     ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">Lihat ${r.photos} foto</button>` : ''}
     ${r.log.map((l) => `<div class="log">${esc(l.by)} ${ACT[l.action]}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
@@ -109,29 +109,41 @@ function viewAll() {
   <div id="listAll">${listAll()}</div>`;
 }
 
+/* ---------- Foto ---------- */
+async function showPh(id) {
+  try {
+    const p = await api('photos/' + id);
+    if (!p.length) return toast('Tidak ada foto');
+    const o = document.createElement('div');
+    o.id = 'ov';
+    o.onclick = () => o.remove();
+    o.innerHTML = p.map((x) => `<img src="${x}" alt="Foto pengajuan">`).join('') +
+      `<p class="ovw">${esc(S.user.name)} · Ops ${esc(S.user.ops || S.user.id)} · Ketuk untuk menutup</p>`;
+    document.body.appendChild(o);
+  } catch (x) { toast(x.message); }
+}
+
 /* ---------- Rekap & ekspor ---------- */
 function viewRekap() {
   const [Y, M] = V.month.split('-').map(Number), n = new Date(Y, M, 0).getDate();
-  const K = ['cuti', 'sakit', 'izin'], nm = { cuti: 'Cuti', sakit: 'Sakit', izin: 'Izin' };
-  const A = {}, tot = { 1: {}, 2: {}, 3: {} };
-  V.reqs.filter((r) => K.includes(r.type) && !['ditolak_tl', 'dikembalikan'].includes(r.status)).forEach((r) => {
-    for (let d = 1; d <= n; d++) {
-      const ds = `${V.month}-${String(d).padStart(2, '0')}`;
-      if (ds >= r.from && ds <= r.to) {
-        A[ds] = A[ds] || {};
-        A[ds][r.shift] = A[ds][r.shift] || {};
-        const c = A[ds][r.shift];
-        c[r.type] = (c[r.type] || 0) + 1;
-        tot[r.shift] = tot[r.shift] || {};
+  const SHIFT_K = ['sakit', 'izin'], nm = { cuti: 'Cuti', sakit: 'Sakit', izin: 'Izin' };
+  const A = {}, tot = { 1: {}, 2: {}, 3: {} }, cutiAll = { hari: 0 };
+  V.reqs.filter((r) => ['cuti', 'sakit', 'izin'].includes(r.type) && !['ditolak_tl', 'dikembalikan'].includes(r.status))
+    .forEach((r) => {
+      for (let d = 1; d <= n; d++) {
+        const ds = `${V.month}-${String(d).padStart(2, '0')}`;
+        if (ds < r.from || ds > r.to) continue;
+        A[ds] = A[ds] || { shift: {}, cuti: 0 };
+        if (r.type === 'cuti') { A[ds].cuti++; cutiAll.hari++; continue; }
+        if (!r.shift) continue;
+        A[ds].shift[r.shift] = A[ds].shift[r.shift] || {};
+        A[ds].shift[r.shift][r.type] = (A[ds].shift[r.shift][r.type] || 0) + 1;
         tot[r.shift][r.type] = (tot[r.shift][r.type] || 0) + 1;
       }
-    }
-  });
+    });
   const dom = (c) => (c ? Object.entries(c).sort((a, b) => b[1] - a[1])[0] : null);
-  const rows = Object.keys(A).sort().map((ds) => `<tr><td>${fd(ds)}</td>${[1, 2, 3].map((s) => {
-    const d = dom(A[ds][s]);
-    return `<td class="${d ? 't-' + d[0] : ''}">${d ? nm[d[0]] + ' ' + d[1] : '–'}</td>`;
-  }).join('')}</tr>`).join('');
+  const cell = (c) => { const d = dom(c); return d ? `<span class="t-${d[0]}">${nm[d[0]]} ${d[1]}</span>` : '–'; };
+  const rows = Object.keys(A).sort().map((ds) => `<tr><td>${fd(ds)}</td>${[1, 2, 3].map((s) => `<td>${cell(A[ds].shift[s])}</td>`).join('')}<td>${A[ds].cuti ? `<span class="t-cuti">Cuti ${A[ds].cuti}</span>` : '–'}</td></tr>`).join('');
 
   return `<h2>Rekap</h2>
   <div class="row"><label style="margin-top:0">Bulan<input type="month" value="${V.month}" onchange="V.month=this.value;render()"></label></div>
@@ -139,17 +151,20 @@ function viewRekap() {
     <button class="ghost sm" onclick="exp(V.month)">Ekspor bulan ini</button>
     <button class="ghost sm" onclick="exp('all')">Ekspor semua</button>
   </div>
-  <p class="meta">Cuti, Sakit, dan Izin yang belum ditolak, dihitung per hari.</p>
+  <p class="meta">Sakit dan Berhalangan Hadir dihitung per shift. Cuti dihitung per hari tanpa shift. Pengajuan yang ditolak tidak dihitung.</p>
   <div class="grid3" style="margin-top:12px">${[1, 2, 3].map((s) => {
-    const t = tot[s] || {}, sum = K.reduce((a, k) => a + (t[k] || 0), 0), d = dom(t);
+    const t = tot[s] || {}, sum = SHIFT_K.reduce((a, k) => a + (t[k] || 0), 0), d = dom(t);
     return `<div class="sheet" style="margin-top:0"><div>${shiftTag(s)}</div>
       <div class="big ${d ? 't-' + d[0] : ''}">${d ? nm[d[0]] : 'Belum ada'}</div>
       <div class="meta">${sum} hari-orang bulan ini</div>
-      <div class="bar">${K.map((k) => `<i style="width:${sum ? (t[k] || 0) / sum * 100 : 0}%;background:var(--${k === 'cuti' ? 'info' : k === 'sakit' ? 'wait' : 'pri'})"></i>`).join('')}</div>
-      <div class="meta">${K.map((k) => `${nm[k]} ${t[k] || 0}`).join(' · ')}</div></div>`;
-  }).join('')}</div>
-  <div class="sheet"><h3>Dominan per tanggal</h3><div class="tbl">${rows
-    ? `<table><tr><th>Tanggal</th><th>Shift 1</th><th>Shift 2</th><th>Shift 3</th></tr>${rows}</table>`
+      <div class="bar">${SHIFT_K.map((k) => `<i style="width:${sum ? (t[k] || 0) / sum * 100 : 0}%;background:var(--${k === 'sakit' ? 'wait' : 'info'})"></i>`).join('')}</div>
+      <div class="meta">${SHIFT_K.map((k) => `${nm[k]} ${t[k] || 0}`).join(' · ')}</div></div>`;
+  }).join('')}
+  <div class="sheet" style="margin-top:0"><div class="sh">Cuti</div>
+      <div class="big t-cuti">${cutiAll.hari} hari-orang</div>
+      <div class="meta">Dihitung per hari, tidak per shift</div></div></div>
+  <div class="sheet"><h3>Per tanggal</h3><div class="tbl">${rows
+    ? `<table><tr><th>Tanggal</th><th>Shift 1</th><th>Shift 2</th><th>Shift 3</th><th>Cuti</th></tr>${rows}</table>`
     : '<div class="empty">Tidak ada data pada bulan ini.</div>'}</div></div>`;
 }
 

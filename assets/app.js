@@ -3,7 +3,7 @@ const App = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = (s) => document.querySelector(s);
   const SH = { 1: '00:00–09:00', 2: '08:00–17:00', 3: '16:00–01:00' };
-  const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Shift', tambah: 'Tambah Hari Kerja', izin: 'Berhalangan Hadir' };
+  const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Tanggal', tambah: 'Tambah Hari Kerja', izin: 'Berhalangan Hadir' };
   const ST = {
     menunggu_tl: ['Menunggu Team Leader', 'wait'],
     disetujui_tl: ['Menunggu pemeriksaan Admin', 'info'],
@@ -17,7 +17,8 @@ const App = (() => {
 
   const fd = (d) => new Date(d + 'T00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
   const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Makassar' }).format(new Date());
-  const shiftTag = (n) => `<span class="sh sh${n}">Shift ${n}</span> <span class="meta">${SH[n] || ''}</span>`;
+  const shiftTag = (n) => (n ? `<span class="sh sh${n}">Shift ${n}</span> <span class="meta">${SH[n] || ''}</span>` : '');
+  const when = (r) => (r.type === 'tukar' ? `${fd(r.from)} ⇄ ${fd(r.to)}` : r.to !== r.from ? `${fd(r.from)} – ${fd(r.to)}` : fd(r.from));
 
   const S = {
     tok: localStorage.getItem('pk_tok'),
@@ -74,5 +75,5 @@ const App = (() => {
     el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
 
-  return { S, $, esc, fd, today, shiftTag, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES };
+  return { S, $, esc, fd, today, shiftTag, when, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES };
 })();
