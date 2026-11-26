@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f5e63">
+<link rel="icon" href="/icon-192.png">
+<title>Backend · Pengajuan Karyawan</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<script src="/assets/app.js"></script>
+<script>
+const { S, $, esc, fd, today, shiftTag, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES } = App;
+const TABS = [['todo', 'Antrian'], ['all', 'Semua'], ['rekap', 'Rekap'], ['users', 'Pengguna']];
+const V = { tab: 'todo', reqs: [], users: null, month: today().slice(0, 7), q: '' };
+
+/* ---------- Login ---------- */
+function viewLogin() {
+  return `<section class="auth"><form class="sheet" onsubmit="doLogin(event)">
+    <h1>Backend</h1>
+    <p class="meta">Khusus Team Leader, Admin, dan Superadmin. Gunakan ID atau Ops ID dan password dari spreadsheet.</p>
+    <label>ID atau Ops ID<input name="login" autocomplete="username" autocapitalize="characters" required></label>
+    <label>Password<input name="pin" type="password" autocomplete="current-password" required></label>
+    <button class="btn">Masuk</button>
+  </form></section>`;
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  const g = (n) => e.target.elements[n].value;
+  try {
+    const d = await api('login', { id: g('login').trim(), pin: g('pin') });
+    if (!BACKEND_ROLES.includes(d.user.role)) throw new Error('Akun ini tidak punya akses Backend. Gunakan Frontend.');
+    saveSession(d.token, d.user);
+    V.tab = 'todo';
+    await load();
+  } catch (x) {
+    toast(x.message);
+  }
+}
+
+/* ---------- Antrian: yang perlu tindakan dari level ini ---------- */
+function isTodo(r) {
+  const u = S.user;
+  if (u.role === 'tl') return r.status === 'menunggu_tl';
+  if (u.role === 'admin') return r.status === 'disetujui_tl';
+  if (u.role === 'superadmin') return ['menunggu_tl', 'disetujui_tl'].includes(r.status);
+  return false;
+}
+
+function card(r) {
+  const [lbl, cls] = ST[r.status] || [r.status, ''];
+  const u = S.user;
+  const tlCan = r.status === 'menunggu_tl' && (u.role === 'tl' || u.role === 'superadmin');
+  const admCan = r.status === 'disetujui_tl' && (u.role === 'admin' || u.role === 'superadmin');
+  const buttons = tlCan ? ['approve', 'reject', 'Setujui', 'Tolak']
+    : admCan ? ['check', 'return', 'Sudah dicek', 'Kembalikan'] : null;
+  return `<article class="item ${cls}">
+    <div class="row1">
+      <div><h3>${T[r.type]} · ${esc(r.name)}</h3>
+        <div class="meta">Ops ${esc(r.ops || '-')} · ${fd(r.from)}${r.to !== r.from ? ' – ' + fd(r.to) : ''}</div></div>
+      <span class="st ${cls}">${lbl}</span>
+    </div>
+    <div class="meta" style="margin-top:6px">${shiftTag(r.shift)}${r.shift2 ? ' → ' + shiftTag(r.shift2) : ''}${r.partner ? ' · Rekan: ' + esc(r.partner) : ''}</div>
+    <p>${esc(r.note)}</p>
+    ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">Lihat ${r.photos} foto</button>` : ''}
+    ${r.log.map((l) => `<div class="log">${esc(l.by)} ${ACT[l.action]}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
+    ${buttons ? `<div class="act">
+      <input id="n${r.id}" placeholder="Catatan (wajib jika menolak atau mengembalikan)">
+      <div class="row">
+        <button class="btn sm" onclick="act('${r.id}','${buttons[0]}')">${buttons[2]}</button>
+        <button class="btn sm danger" onclick="act('${r.id}','${buttons[1]}')">${buttons[3]}</button>
+      </div></div>` : ''}
+  </article>`;
+}
+
+async function act(id, a) {
+  const note = document.getElementById('n' + id)?.value || '';
+  if (['reject', 'return'].includes(a) && !note.trim()) return toast('Isi catatan dulu');
+  try {
+    await api('act', { id, action: a, note });
+    toast('Tersimpan');
+    await load();
+  } catch (x) { toast(x.message); }
+}
+
+function viewTodo() {
+  const l = V.reqs.filter(isTodo);
+  return `<h2>Antrian persetujuan</h2>${l.length ? l.map(card).join('') : '<div class="empty">Tidak ada pengajuan yang perlu tindakan.</div>'}`;
+}
+function matchQ(r, q) {
+  if (!q) return true;
+  const hay = [r.name, r.ops, r.uid, r.type && T[r.type], r.note, r.partner, ST[r.status]?.[0], r.from, r.to]
+    .filter(Boolean).join(' ').toLowerCase();
+  return q.toLowerCase().split(/\s+/).every((w) => hay.includes(w));
+}
+function listAll() {
+  const l = V.reqs.filter((r) => matchQ(r, V.q));
+  return l.length ? l.map(card).join('') : '<div class="empty">Tidak ada pengajuan yang cocok.</div>';
+}
+function viewAll() {
+  return `<h2>Semua pengajuan</h2>
+  <input type="search" placeholder="Cari nama, Ops ID, jenis, status, tanggal (YYYY-MM-DD)…" value="${esc(V.q || '')}" oninput="V.q=this.value;document.getElementById('listAll').innerHTML=listAll()" style="margin-bottom:12px">
+  <div id="listAll">${listAll()}</div>`;
+}
+
+/* ---------- Rekap & ekspor ---------- */
+function viewRekap() {
+  const [Y, M] = V.month.split('-').map(Number), n = new Date(Y, M, 0).getDate();
+  const K = ['cuti', 'sakit', 'izin'], nm = { cuti: 'Cuti', sakit: 'Sakit', izin: 'Izin' };
+  const A = {}, tot = { 1: {}, 2: {}, 3: {} };
+  V.reqs.filter((r) => K.includes(r.type) && !['ditolak_tl', 'dikembalikan'].includes(r.status)).forEach((r) => {
+    for (let d = 1; d <= n; d++) {
+      const ds = `${V.month}-${String(d).padStart(2, '0')}`;
+      if (ds >= r.from && ds <= r.to) {
+        A[ds] = A[ds] || {};
+        A[ds][r.shift] = A[ds][r.shift] || {};
+        const c = A[ds][r.shift];
+        c[r.type] = (c[r.type] || 0) + 1;
+        tot[r.shift] = tot[r.shift] || {};
+        tot[r.shift][r.type] = (tot[r.shift][r.type] || 0) + 1;
+      }
+    }
+  });
+  const dom = (c) => (c ? Object.entries(c).sort((a, b) => b[1] - a[1])[0] : null);
+  const rows = Object.keys(A).sort().map((ds) => `<tr><td>${fd(ds)}</td>${[1, 2, 3].map((s) => {
+    const d = dom(A[ds][s]);
+    return `<td class="${d ? 't-' + d[0] : ''}">${d ? nm[d[0]] + ' ' + d[1] : '–'}</td>`;
+  }).join('')}</tr>`).join('');
+
+  return `<h2>Rekap</h2>
+  <div class="row"><label style="margin-top:0">Bulan<input type="month" value="${V.month}" onchange="V.month=this.value;render()"></label></div>
+  <div class="row" style="margin:12px 0 16px">
+    <button class="ghost sm" onclick="exp(V.month)">Ekspor bulan ini</button>
+    <button class="ghost sm" onclick="exp('all')">Ekspor semua</button>
+  </div>
+  <p class="meta">Cuti, Sakit, dan Izin yang belum ditolak, dihitung per hari.</p>
+  <div class="grid3" style="margin-top:12px">${[1, 2, 3].map((s) => {
+    const t = tot[s] || {}, sum = K.reduce((a, k) => a + (t[k] || 0), 0), d = dom(t);
+    return `<div class="sheet" style="margin-top:0"><div>${shiftTag(s)}</div>
+      <div class="big ${d ? 't-' + d[0] : ''}">${d ? nm[d[0]] : 'Belum ada'}</div>
+      <div class="meta">${sum} hari-orang bulan ini</div>
+      <div class="bar">${K.map((k) => `<i style="width:${sum ? (t[k] || 0) / sum * 100 : 0}%;background:var(--${k === 'cuti' ? 'info' : k === 'sakit' ? 'wait' : 'pri'})"></i>`).join('')}</div>
+      <div class="meta">${K.map((k) => `${nm[k]} ${t[k] || 0}`).join(' · ')}</div></div>`;
+  }).join('')}</div>
+  <div class="sheet"><h3>Dominan per tanggal</h3><div class="tbl">${rows
+    ? `<table><tr><th>Tanggal</th><th>Shift 1</th><th>Shift 2</th><th>Shift 3</th></tr>${rows}</table>`
+    : '<div class="empty">Tidak ada data pada bulan ini.</div>'}</div></div>`;
+}
+
+async function exp(m) {
+  try {
+    const r = await fetch('/api/export?month=' + encodeURIComponent(m), { headers: { authorization: 'Bearer ' + S.tok } });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Gagal ekspor');
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rekap-pengajuan-${m}.xlsx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast('Rekap diunduh');
+  } catch (x) { toast(x.message); }
+}
+
+/* ---------- Pengguna (sumber: spreadsheet, hanya baca) ---------- */
+function viewUsers() {
+  const us = V.users || [];
+  return `<h2>Pengguna</h2>
+  <p class="meta">Akun, password, dan userlevel dikelola di spreadsheet. Ubah di sana, lalu tunggu sekitar satu menit.</p>
+  <div class="sheet">${us.length ? us.map((x) => `<div style="padding:10px 0;border-bottom:1px solid var(--rule)">
+      <b>${esc(x.name)}</b> <span class="meta">${esc(x.id)} · ${ROLE[x.role] || x.role}${x.active ? '' : ' · <span style="color:var(--bad)">Nonaktif</span>'}</span>
+    </div>`).join('') : '<div class="empty">Belum ada data.</div>'}</div>`;
+}
+
+/* ---------- Kerangka ---------- */
+function isOpen(r) { return isTodo(r); }
+
+function render() {
+  const u = S.user;
+  if (!u) { $('#app').innerHTML = viewLogin(); return; }
+  const count = V.reqs.filter(isOpen).length;
+  const main = V.tab === 'todo' ? viewTodo() : V.tab === 'all' ? viewAll() : V.tab === 'rekap' ? viewRekap() : viewUsers();
+  $('#app').innerHTML = `
+    <header class="top">
+      <div><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${ROLE[u.role]}</small></div>
+      <div class="acts"><a class="ghost sm" href="/">Frontend</a><button class="ghost sm" onclick="logout()">Keluar</button></div>
+    </header>
+    <main>${main}</main>
+    <nav class="tabs">${TABS.map(([k, n]) => `<button class="${V.tab === k ? 'on' : ''}" onclick="go('${k}')">${n}${k === 'todo' && count ? ` (${count})` : ''}</button>`).join('')}</nav>`;
+  watermark(u);
+}
+
+async function go(k) {
+  V.tab = k;
+  if (k === 'users') {
+    try { V.users = (await api('users')).users; } catch (x) { toast(x.message); }
+  }
+  render();
+}
+
+async function load() {
+  try { V.reqs = (await api('requests?scope=team')).requests; } catch (x) { toast(x.message); }
+  render();
+}
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+S.user ? load() : render();
+</script>
+</body>
+</html>
