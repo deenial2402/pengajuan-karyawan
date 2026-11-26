@@ -257,13 +257,9 @@ function render() {
   if (!u) { $('#app').innerHTML = viewLogin(); return; }
   const count = V.reqs.filter(isTodo).length;
   const body = V.tab === 'todo' ? viewTodo() : V.tab === 'all' ? viewAll() : V.tab === 'rekap' ? viewRekap() : V.tab === 'sched' ? viewSched() : viewUsers();
-  $('#app').innerHTML = `
-    <header class="top">
-      <div><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${roleName(u.role)}</small></div>
-      <div class="acts">${prefsBar()}<a class="ghost sm" href="/">${t('frontend')}</a><button class="ghost sm" onclick="logout()">${t('logout')}</button></div>
-    </header>
-    <main>${body}</main>
-    <nav class="tabs">${TABS.map((k) => `<button class="${V.tab === k ? 'on' : ''}" onclick="go('${k}')">${t(TAB_LABEL[k])}${k === 'todo' && count ? ` (${count})` : ''}</button>`).join('')}</nav>`;
+  const items = TABS.map((k) => ({ k, label: t(TAB_LABEL[k]), badge: k === 'todo' ? count : 0 }));
+  $('#app').innerHTML = App.shell({ u, items, active: V.tab, badge: count, link: { href: '/', label: t('frontend') } }) +
+    `<main>${body}</main>`;
   watermark(u);
 }
 

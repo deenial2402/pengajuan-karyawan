@@ -181,7 +181,41 @@ const App = (() => {
     el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
 
+  const svg = (d) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const ICON = {
+    sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+    moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+    out: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>'),
+  };
+
+  /** Menu pop up kiri (drawer) + header. Dipakai Frontend dan Backend. */
+  const openMenu = () => document.body.classList.add('menu-open');
+  const closeMenu = () => document.body.classList.remove('menu-open');
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+
+  function shell({ u, items, active, link, badge = 0 }) {
+    const nav = items.map((i) => `<button type="button" class="nav-item ${active === i.k ? 'on' : ''}" onclick="App.closeMenu();go('${i.k}')">${esc(i.label)}${i.badge ? `<span class="pill">${i.badge}</span>` : ''}</button>`).join('');
+    return `<header class="top">
+      <button type="button" class="menu-btn" onclick="App.openMenu()" aria-label="Menu"><span></span><span></span><span></span>${badge ? `<i class="dot">${badge}</i>` : ''}</button>
+      <div class="who-top"><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${roleName(u.role)}</small></div>
+      <div class="hbtns">
+        <button type="button" class="icon-btn" onclick="App.toggleTheme();render()" aria-label="${prefs.theme === 'dark' ? t('theme_light') : t('theme_dark')}" title="${prefs.theme === 'dark' ? t('theme_light') : t('theme_dark')}">${prefs.theme === 'dark' ? ICON.sun : ICON.moon}</button>
+        <button type="button" class="icon-btn" onclick="App.logout()" aria-label="${t('logout')}" title="${t('logout')}">${ICON.out}</button>
+      </div>
+    </header>
+    <div id="scrim" onclick="App.closeMenu()"></div>
+    <aside id="drawer" aria-label="Menu">
+      <div class="d-head"><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${roleName(u.role)}</small></div>
+      <nav class="d-nav">${nav}</nav>
+      <div class="d-foot">
+        <button type="button" class="ghost sm" onclick="App.toggleLang();render()" aria-label="${t('lang_switch')}">${prefs.lang === 'id' ? 'English (EN)' : 'Bahasa Indonesia (ID)'}</button>
+        ${link ? `<a class="ghost sm" href="${link.href}">${link.label}</a>` : ''}
+      </div>
+    </aside>`;
+  }
+
   return {
+    openMenu, closeMenu, shell,
     S, $, esc, fd, today, shiftTag, when, toast, api, download, saveSession, logout, watermark,
     t, typeName, stLabel, actLabel, roleName, prefsBar, toggleLang, toggleTheme, prefs,
     SH, ST_CLS, BACKEND_ROLES,

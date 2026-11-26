@@ -266,19 +266,10 @@ function viewTutorial() {
 function render() {
   const u = S.user;
   if (!u) { $('#app').innerHTML = viewLogin(); return; }
-  const tabs = [['form', t('tab_work')], ['list', t('tab_hist')], ['sched', t('tab_sched')], ['tutorial', t('tab_tutorial')]];
+  const items = [['form', t('tab_work')], ['list', t('tab_hist')], ['sched', t('tab_sched')], ['tutorial', t('tab_tutorial')]].map(([k, label]) => ({ k, label }));
   const body = V.tab === 'form' ? viewForm() : V.tab === 'list' ? viewList() : V.tab === 'sched' ? viewSched() : viewTutorial();
-  $('#app').innerHTML = `
-    <header class="top">
-      <div><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${roleName(u.role)}</small></div>
-      <div class="acts">
-        ${prefsBar()}
-        ${BACKEND_ROLES.includes(u.role) ? `<a class="ghost sm" href="/backend/">${t('backend')}</a>` : ''}
-        <button class="ghost sm" onclick="logout()">${t('logout')}</button>
-      </div>
-    </header>
-    <main>${body}</main>
-    <nav class="tabs">${tabs.map(([k, n]) => `<button class="${V.tab === k ? 'on' : ''}" onclick="go('${k}')">${n}</button>`).join('')}</nav>`;
+  const link = BACKEND_ROLES.includes(u.role) ? { href: '/backend/', label: t('backend') } : null;
+  $('#app').innerHTML = App.shell({ u, items, active: V.tab, link }) + `<main>${body}</main>`;
   watermark(u);
 }
 
