@@ -19,7 +19,9 @@ const { S, $, esc, fd, today, shiftTag, when, toast, api, download, saveSession,
 
 const TABS = ['todo', 'all', 'rekap', 'sched', 'users'];
 const TAB_LABEL = { todo: 'tab_queue', all: 'tab_all', rekap: 'tab_recap', sched: 'tab_sched', users: 'tab_users' };
-const V = { tab: 'todo', reqs: [], users: null, sched: [], month: today().slice(0, 7), q: '' };
+const KINDS = ['cuti', 'sakit', 'tukar', 'tambah', 'izin'];
+const STATUSES = ['menunggu_tl', 'disetujui_tl', 'selesai', 'ditolak_tl', 'dikembalikan', 'dibatalkan'];
+const V = { tab: 'todo', reqs: [], users: null, sched: [], month: today().slice(0, 7), q: '', f: { status: '', type: '', from: '', to: '' } };
 
 /* ---------- Login ---------- */
 function viewLogin() {
@@ -97,17 +99,61 @@ function matchQ(r, q) {
   const hay = [r.name, r.ops, r.uid, typeName(r.type), r.note, stLabel(r.status), r.from, r.to].filter(Boolean).join(' ').toLowerCase();
   return q.toLowerCase().split(/\s+/).every((w) => hay.includes(w));
 }
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+function passF(r) {
+  const f = V.f;
+  if (f.status && r.status !== f.status) return false;
+  if (f.type && r.type !== f.type) return false;
+  if (f.from || f.to) {
+    const inR = (d) => (!f.from || d >= f.from) && (!f.to || d <= f.to);
+    const ok = r.type === 'tukar' ? inR(r.from) || inR(r.to) : (!f.to || r.from <= f.to) && (!f.from || r.to >= f.from);
+    if (!ok) return false;
+  }
+  return true;
+}
+const filtered = () => V.reqs.filter((r) => passF(r) && matchQ(r, V.q));
 function listAll() {
-  const l = V.reqs.filter((r) => matchQ(r, V.q));
+  const l = filtered();
   return l.length ? l.map(card).join('') : `<div class="empty">${t('empty_search')}</div>`;
 }
+function refreshAll() {
+  document.getElementById('listAll').innerHTML = listAll();
+  document.getElementById('cnt').textContent = t('flt_count', { n: filtered().length });
+}
+function setF(k, v) { V.f[k] = v; render(); }
+function quick(k) {
+  const td = today();
+  if (k === 'today') { V.f.from = td; V.f.to = td; }
+  else {
+    const mon = addDays(td, -((new Date(td + 'T00:00:00Z').getUTCDay() + 6) % 7));
+    V.f.from = mon; V.f.to = addDays(mon, 6);
+  }
+  render();
+}
+function resetF() { V.f = { status: '', type: '', from: '', to: '' }; V.q = ''; render(); }
 function viewTodo() {
   const l = V.reqs.filter(isTodo);
   return `<h2>${t('queue_title')}</h2>${l.length ? l.map(card).join('') : `<div class="empty">${t('empty_queue')}</div>`}`;
 }
 function viewAll() {
   return `<h2>${t('all_title')}</h2>
-  <input type="search" placeholder="${t('search_ph')}" value="${esc(V.q)}" oninput="V.q=this.value;document.getElementById('listAll').innerHTML=listAll()" style="margin-bottom:12px">
+  <input type="search" placeholder="${t('search_ph')}" value="${esc(V.q)}" oninput="V.q=this.value;refreshAll()" style="margin-bottom:8px">
+  <div class="filters">
+    <div class="row">
+      <select onchange="setF('status',this.value)" aria-label="Status"><option value="">${t('flt_all_status')}</option>${STATUSES.map((k) => `<option value="${k}" ${V.f.status === k ? 'selected' : ''}>${stLabel(k)}</option>`).join('')}</select>
+      <select onchange="setF('type',this.value)" aria-label="${t('flt_all_type')}"><option value="">${t('flt_all_type')}</option>${KINDS.map((k) => `<option value="${k}" ${V.f.type === k ? 'selected' : ''}>${typeName(k)}</option>`).join('')}</select>
+    </div>
+    <div class="row">
+      <label><span>${t('flt_from')}</span><input type="date" value="${V.f.from}" onchange="setF('from',this.value)"></label>
+      <label><span>${t('flt_to')}</span><input type="date" value="${V.f.to}" onchange="setF('to',this.value)"></label>
+    </div>
+    <div class="chips">
+      <button type="button" class="ghost sm" onclick="quick('today')">${t('flt_today')}</button>
+      <button type="button" class="ghost sm" onclick="quick('week')">${t('flt_week')}</button>
+      <button type="button" class="ghost sm" onclick="resetF()">${t('flt_reset')}</button>
+    </div>
+  </div>
+  <div class="meta" id="cnt" style="margin-bottom:10px">${t('flt_count', { n: filtered().length })}</div>
   <div id="listAll">${V.reqs.length ? listAll() : `<div class="empty">${t('empty_all')}</div>`}</div>`;
 }
 
@@ -187,7 +233,7 @@ function viewRekap() {
   const SHIFT_K = ['sakit', 'izin'];
   const nm = { cuti: typeName('cuti'), sakit: typeName('sakit'), izin: typeName('izin') };
   const A = {}, tot = { 1: {}, 2: {}, 3: {} }, cutiAll = { hari: 0 };
-  V.reqs.filter((r) => ['cuti', 'sakit', 'izin'].includes(r.type) && !['ditolak_tl', 'dikembalikan'].includes(r.status))
+  V.reqs.filter((r) => ['cuti', 'sakit', 'izin'].includes(r.type) && !['ditolak_tl', 'dikembalikan', 'dibatalkan'].includes(r.status))
     .forEach((r) => {
       for (let d = 1; d <= n; d++) {
         const ds = `${V.month}-${String(d).padStart(2, '0')}`;

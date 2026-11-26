@@ -1,6 +1,6 @@
 // Akses Google Sheets memakai service account.
 // - Spreadsheet Users (SHEET_ID): hanya dibaca. Kolom: A ID Login | B Ops ID | C Nama | D Userlevel | E Password | F Aktif
-// - Spreadsheet Riwayat (HISTORY_SHEET_ID): dibaca dan ditulis. Tab Pengajuan berisi semua pengajuan.
+// - Spreadsheet Riwayat (HISTORY_SHEET_ID): dibaca dan ditulis. Satu tab per jenis pengajuan (Cuti, Sakit, Tukar Tanggal, Tambah Hari Kerja, Izin).
 import { createSign } from 'node:crypto';
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'; // baca & tulis
@@ -60,6 +60,13 @@ const enc = encodeURIComponent;
 export async function readRange(spreadsheetId, range) {
   const d = await sheetsFetch(`${spreadsheetId}/values/${enc(range)}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`);
   return (d.values || []).map((row) => row.map((c) => (c == null ? '' : String(c))));
+}
+
+/** Membaca beberapa rentang sekaligus (satu panggilan API). */
+export async function readRanges(spreadsheetId, ranges) {
+  const qs = ranges.map((r) => 'ranges=' + enc(r)).join('&');
+  const d = await sheetsFetch(`${spreadsheetId}/values:batchGet?${qs}&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`);
+  return (d.valueRanges || []).map((v) => (v.values || []).map((row) => row.map((c) => (c == null ? '' : String(c)))));
 }
 
 /** Menambah baris di bawah tabel. RAW agar teks tidak diubah otomatis (mis. tanggal). */

@@ -3,15 +3,15 @@ import ExcelJS from 'exceljs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { getUsers } from '../lib/sheets.mjs';
 import { sign, verify } from '../lib/session.mjs';
-import { readAll, appendOne, updateOne, LABEL } from '../lib/history.mjs';
+import { readAll, appendOne, updateOne, LABEL, ConflictError } from '../lib/history.mjs';
 
 const BACKEND_ROLES = ['tl', 'admin', 'superadmin'];
 const TYPES = ['cuti', 'sakit', 'tukar', 'tambah', 'izin'];
 const RANGE_TYPES = ['cuti', 'sakit']; // hanya ini yang boleh rentang tanggal
 const SHIFT_TYPES = ['sakit', 'izin']; // hanya ini yang memakai shift
 const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Tanggal', tambah: 'Tambah Hari Kerja', izin: 'Izin' };
-const ACT = { approve: 'menyetujui', reject: 'menolak', check: 'sudah memeriksa', return: 'mengembalikan' };
-const TZ = 'Asia/Makassar';
+const ACT = { approve: 'menyetujui', reject: 'menolak', check: 'sudah memeriksa', return: 'mengembalikan', cancel: 'membatalkan' };
+const TZ = 'Asia/Jakarta'; // WIB (GMT+7)
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Aturan perpindahan status. Sama dengan validasi di Apps Script.
@@ -107,6 +107,8 @@ async function createRequest(u, req) {
     }
   }
 
+  if (b.type === 'sakit' && photos.length < 1) return fail('Foto surat dokter wajib dilampirkan untuk Sakit');
+
   // Nama dan Ops ID diambil dari spreadsheet Users, bukan dari browser.
   const rec = {
     id: randomUUID(),
@@ -135,7 +137,7 @@ async function act(u, req) {
   const rule = RULES[action];
   if (!rule) return fail('Aksi tidak valid');
 
-  const r = (await readAll()).find((x) => x.id === id);
+  const r = (await readAll({ fresh: true })).find((x) => x.id === id);
   if (!r) return fail('Pengajuan tidak ditemukan', 404);
 
   if (!rule.roles.includes(u.role) || r.status !== rule.from) {
@@ -146,11 +148,39 @@ async function act(u, req) {
 
   const at = new Date().toISOString();
   r.status = rule.to;
-  r.by = u.id;
+  r.by = u.name;
   r.at = at;
   r.noteProc = catatan.slice(0, 500);
   r.log.push({ by: u.name, role: u.role, action, note: r.noteProc, at, via: 'backend' });
-  await updateOne(r);
+  try {
+    await updateOne(r, rule.from);
+  } catch (e) {
+    if (e instanceof ConflictError) return fail('Pengajuan ini baru saja diproses orang lain. Muat ulang halaman.', 409);
+    throw e;
+  }
+  return json({ request: r });
+}
+
+// Karyawan membatalkan pengajuannya sendiri selama masih menunggu Team Leader.
+async function cancel(u, req) {
+  const { id } = await req.json().catch(() => ({}));
+  const r = (await readAll({ fresh: true })).find((x) => x.id === id);
+  if (!r) return fail('Pengajuan tidak ditemukan', 404);
+  if (r.uid !== u.id) return fail('Hanya pemilik pengajuan yang bisa membatalkan', 403);
+  if (r.status !== 'menunggu_tl') return fail('Pengajuan sudah diproses, tidak bisa dibatalkan', 409);
+
+  const at = new Date().toISOString();
+  r.status = 'dibatalkan';
+  r.by = u.name;
+  r.at = at;
+  r.noteProc = 'Dibatalkan oleh karyawan';
+  r.log.push({ by: u.name, role: u.role, action: 'cancel', note: '', at, via: 'frontend' });
+  try {
+    await updateOne(r, 'menunggu_tl');
+  } catch (e) {
+    if (e instanceof ConflictError) return fail('Pengajuan ini baru saja diproses Team Leader, tidak bisa dibatalkan.', 409);
+    throw e;
+  }
   return json({ request: r });
 }
 
@@ -261,7 +291,7 @@ async function exportXlsx(u, url) {
 
   ws.mergeCells(2, 1, 2, cols.length);
   const wm = ws.getCell('A2');
-  wm.value = `Diunduh oleh ${who} · ${fmtTime(new Date().toISOString())} WITA`;
+  wm.value = `Diunduh oleh ${who} · ${fmtTime(new Date().toISOString())} WIB`;
   wm.font = { name: 'Arial', size: 9, italic: true, color: { argb: 'FF5D6B6C' } };
 
   const hr = ws.addRow(cols.map((c) => c.h));
@@ -297,6 +327,7 @@ export default async (req) => {
     if (p === 'requests' && m === 'GET') return await listRequests(u, url);
     if (p === 'requests' && m === 'POST') return await createRequest(u, req);
     if (p === 'act' && m === 'POST') return await act(u, req);
+    if (p === 'cancel' && m === 'POST') return await cancel(u, req);
     if (p.startsWith('photos/') && m === 'GET') return await photos(u, decodeURIComponent(p.slice(7)));
     if (p === 'users' && m === 'GET') return await users(u);
     if (p === 'export' && m === 'GET') return await exportXlsx(u, url);

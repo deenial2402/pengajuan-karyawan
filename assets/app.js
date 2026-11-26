@@ -4,7 +4,7 @@ const App = (() => {
   const $ = (s) => document.querySelector(s);
   const SH = { 1: '00:00–09:00', 2: '08:00–17:00', 3: '16:00–01:00' };
   const BACKEND_ROLES = ['tl', 'admin', 'superadmin'];
-  const ST_CLS = { menunggu_tl: 'wait', disetujui_tl: 'info', selesai: 'ok', ditolak_tl: 'bad', dikembalikan: 'bad' };
+  const ST_CLS = { menunggu_tl: 'wait', disetujui_tl: 'info', selesai: 'ok', ditolak_tl: 'bad', dikembalikan: 'bad', dibatalkan: 'mut' };
 
   const DICT = {
     id: {
@@ -37,7 +37,7 @@ const App = (() => {
       err_file_big: 'File lebih dari 4 MB', err_no_access: 'Akun ini tidak punya akses Backend. Gunakan Frontend.',
       toast_sent: 'Terkirim', toast_saved: 'Tersimpan', toast_downloaded: 'Berkas diunduh', toast_recap: 'Rekap diunduh',
       no_photo: 'Tidak ada foto', rekap_title: 'Rekap', month: 'Bulan', export_month: 'Ekspor bulan ini', export_all: 'Ekspor semua',
-      recap_note: 'Sakit dan Izin dihitung per shift. Cuti dihitung per hari tanpa shift. Pengajuan yang ditolak tidak dihitung.',
+      recap_note: 'Sakit dan Izin dihitung per shift. Cuti dihitung per hari tanpa shift. Pengajuan yang ditolak, dikembalikan, atau dibatalkan tidak dihitung.',
       recap_nodata: 'Tidak ada data pada bulan ini.', recap_none: 'Belum ada', hari_orang: 'hari-orang',
       cuti_per_hari: 'Dihitung per hari, tidak per shift', per_tanggal: 'Per tanggal', date_col: 'Tanggal',
       users_note: 'Akun, password, dan userlevel dikelola di spreadsheet. Ubah di sana, lalu tunggu sekitar satu menit.',
@@ -47,6 +47,11 @@ const App = (() => {
       queue_title: 'Antrian persetujuan', all_title: 'Semua pengajuan', new_request: 'Work Permit',
       sched_head: 'Jadwal', sched_hint: 'Jadwal diunggah oleh Backend. Anda bisa mengunduh berkas PDF atau foto untuk memeriksa jadwal.',
       rel_cuti: 'Cuti', rel_izin: 'Izin',
+      st_dibatalkan: 'Dibatalkan', act_cancel: 'membatalkan', btn_cancel: 'Batalkan pengajuan',
+      cancel_confirm: 'Batalkan pengajuan ini?', toast_cancelled: 'Pengajuan dibatalkan',
+      photo_hint_req: '(wajib, maks. 3)', err_photo_sick: 'Foto surat dokter wajib dilampirkan',
+      flt_all_status: 'Semua status', flt_all_type: 'Semua jenis', flt_from: 'Dari tanggal', flt_to: 'Sampai tanggal',
+      flt_today: 'Hari ini', flt_week: 'Minggu ini', flt_reset: 'Reset filter', flt_count: '{n} pengajuan',
     },
     en: {
       app_name: 'Palangka Raya DC',
@@ -78,7 +83,7 @@ const App = (() => {
       err_file_big: 'File is larger than 4 MB', err_no_access: 'This account has no Backend access. Use the Frontend.',
       toast_sent: 'Submitted', toast_saved: 'Saved', toast_downloaded: 'File downloaded', toast_recap: 'Recap downloaded',
       no_photo: 'No photos', rekap_title: 'Recap', month: 'Month', export_month: 'Export this month', export_all: 'Export all',
-      recap_note: 'Sick Leave and Permission are counted per shift. Leave is counted per day without shift. Rejected requests are not counted.',
+      recap_note: 'Sick Leave and Permission are counted per shift. Leave is counted per day without shift. Rejected, returned, and cancelled requests are not counted.',
       recap_nodata: 'No data this month.', recap_none: 'None yet', hari_orang: 'person-days',
       cuti_per_hari: 'Counted per day, not per shift', per_tanggal: 'By date', date_col: 'Date',
       users_note: 'Accounts, passwords, and user levels are managed in the spreadsheet. Change them there; updates take about a minute.',
@@ -88,6 +93,11 @@ const App = (() => {
       queue_title: 'Approval queue', all_title: 'All requests', new_request: 'Work Permit',
       sched_head: 'Schedule', sched_hint: 'Schedules are uploaded by the Backend. Download the PDF or photo to check your schedule.',
       rel_cuti: 'Leave', rel_izin: 'Permission',
+      st_dibatalkan: 'Cancelled', act_cancel: 'cancelled', btn_cancel: 'Cancel request',
+      cancel_confirm: 'Cancel this request?', toast_cancelled: 'Request cancelled',
+      photo_hint_req: '(required, max 3)', err_photo_sick: 'Doctor’s note photo is required',
+      flt_all_status: 'All statuses', flt_all_type: 'All types', flt_from: 'From date', flt_to: 'To date',
+      flt_today: 'Today', flt_week: 'This week', flt_reset: 'Reset filters', flt_count: '{n} request(s)',
     },
   };
 
@@ -106,7 +116,7 @@ const App = (() => {
 
   const locale = () => (prefs.lang === 'en' ? 'en-GB' : 'id-ID');
   const fd = (d) => new Date(d + 'T00:00').toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
-  const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Makassar' }).format(new Date());
+  const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
   const shiftTag = (n) => (n ? `<span class="sh sh${n}">${t('shift')} ${n}</span> <span class="meta">${SH[n] || ''}</span>` : '');
   const when = (r) => (r.type === 'tukar' ? `${fd(r.from)} ⇄ ${fd(r.to)}` : r.to !== r.from ? `${fd(r.from)} – ${fd(r.to)}` : fd(r.from));
   const typeName = (k) => t('type_' + k);

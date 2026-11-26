@@ -77,7 +77,7 @@ function viewForm() {
     ${SHIFT_TYPES.includes(tp) ? `<label>${t('shift')}<select name="shift">${sel}</select></label>` : ''}
     <label>${t('reason')}<textarea name="note" required oninput="V.note=this.value">${esc(V.note)}</textarea></label>
     <div class="field">
-      <span class="lbl">${photoLabel} ${t('photo_hint')}</span>
+      <span class="lbl">${photoLabel} ${tp === 'sakit' ? t('photo_hint_req') : t('photo_hint')}</span>
       <input id="fi" type="file" accept="image/*" multiple hidden onchange="addPh(this)">
       <button type="button" class="ghost" onclick="$('#fi').click()">${t('upload_photo')}</button>
       <div class="thumbs">${V.photos.map((p, i) => `<div><img src="${p}" alt=""><button type="button" onclick="rmPh(${i})" aria-label="×">×</button></div>`).join('')}</div>
@@ -98,6 +98,7 @@ async function send(e) {
     photos: V.photos,
   };
   if (body.type === 'tukar' && body.from === body.to) return toast(t('err_same_date'));
+  if (body.type === 'sakit' && !V.photos.length) return toast(t('err_photo_sick'));
   try {
     await api('requests', body);
     toast(t('toast_sent'));
@@ -159,7 +160,16 @@ function reqCard(r) {
     <p>${esc(r.note)}</p>
     ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">${t('view_photos', { n: r.photos })}</button>` : ''}
     ${r.log.map((l) => `<div class="log">${esc(l.by)} ${actLabel(l.action)}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
+    ${r.status === 'menunggu_tl' ? `<div class="act"><button class="btn sm danger" onclick="cancelReq('${r.id}')">${t('btn_cancel')}</button></div>` : ''}
   </article>`;
+}
+async function cancelReq(id) {
+  if (!confirm(t('cancel_confirm'))) return;
+  try {
+    await api('cancel', { id });
+    toast(t('toast_cancelled'));
+    await load();
+  } catch (x) { toast(x.message); }
 }
 function viewList() {
   return `<h2>${t('tab_hist')}</h2>${V.reqs.length ? V.reqs.map(reqCard).join('') : `<div class="empty">${t('empty_hist')}</div>`}`;
@@ -190,23 +200,23 @@ const TUT = {
         'Isi tanggal. Cuti dan Sakit memakai Mulai dan Sampai. Izin dan Tambah Hari Kerja memakai satu tanggal. Tukar Tanggal memakai tanggal kerja yang ditukar dan tanggal pengganti.',
         'Pilih shift. Shift hanya perlu diisi untuk Sakit dan Izin.',
         'Isi Alasan dengan jelas.',
-        'Tambahkan foto pendukung jika ada (opsional, maks. 3). Untuk Sakit, unggah foto surat dokter.',
+        'Tambahkan foto pendukung jika ada (opsional, maks. 3). Khusus Sakit, foto surat dokter wajib diunggah.',
         'Tekan Kirim. Pengajuan langsung masuk ke Team Leader.',
       ]},
       { h: 'Aturan penting', steps: [
         'Tanggal tidak boleh sebelum hari ini.',
         'Pada Tukar Tanggal, tanggal pengganti harus berbeda dari tanggal yang ditukar.',
-        'Pengajuan yang sudah dikirim tidak bisa diubah. Jika ada kesalahan, hubungi Team Leader atau Admin.',
+        'Pengajuan yang sudah dikirim tidak bisa diubah. Jika salah isi, tekan Batalkan pengajuan di tab Histori selama statusnya masih Menunggu Approval Team Leader, lalu buat pengajuan baru.',
       ]},
       { h: 'Alur pengajuan', flow: true, steps: [
         'Kirim oleh karyawan',
         'Menunggu Approval Team Leader',
         'Menunggu Validasi Admin',
         'Selesai',
-      ], note: 'Jika Team Leader menolak, status menjadi Ditolak Team Leader. Jika Admin mengembalikan, status menjadi Dikembalikan Admin. Keduanya dapat disertai catatan alasan.' },
+      ], note: 'Jika Team Leader menolak, status menjadi Ditolak Team Leader. Jika Admin mengembalikan, status menjadi Dikembalikan Admin. Keduanya dapat disertai catatan alasan. Jika Anda membatalkan sendiri, status menjadi Dibatalkan.' },
       { h: 'Memantau status', steps: [
         'Buka tab Histori untuk melihat semua pengajuan Anda.',
-        'Warna garis di kiri kartu menunjukkan status: oranye untuk menunggu, biru untuk menunggu validasi, hijau untuk selesai, dan merah untuk ditolak atau dikembalikan.',
+        'Warna garis di kiri kartu menunjukkan status: oranye untuk menunggu, biru untuk menunggu validasi, hijau untuk selesai, merah untuk ditolak atau dikembalikan, dan abu-abu untuk dibatalkan.',
         'Catatan dari Team Leader atau Admin tampil di bawah kartu pengajuan.',
       ]},
       { h: 'Jadwal', steps: [
@@ -224,23 +234,23 @@ const TUT = {
         'Fill in the dates. Leave and Sick Leave use Start and End. Permission and Extra Workday use one date. Date Swap uses the workday to swap and the replacement date.',
         'Choose a shift. A shift is only required for Sick Leave and Permission.',
         'Fill in the Reason clearly.',
-        'Add supporting photos if you have any (optional, max 3). For Sick Leave, upload the doctor’s note.',
+        'Add supporting photos if you have any (optional, max 3). For Sick Leave, the doctor’s note photo is required.',
         'Tap Submit. The request goes straight to your Team Leader.',
       ]},
       { h: 'Important rules', steps: [
         'Dates cannot be earlier than today.',
         'For Date Swap, the replacement date must be different from the workday to swap.',
-        'A submitted request cannot be edited. If there is a mistake, contact your Team Leader or Admin.',
+        'A submitted request cannot be edited. If there is a mistake, tap Cancel request in the History tab while it is still Waiting Team Leader Approval, then submit a new one.',
       ]},
       { h: 'Request flow', flow: true, steps: [
         'Submitted by employee',
         'Waiting Team Leader Approval',
         'Waiting Admin Validation',
         'Completed',
-      ], note: 'If the Team Leader rejects, the status becomes Rejected by Team Leader. If the Admin returns it, the status becomes Returned by Admin. Both can include a reason.' },
+      ], note: 'If the Team Leader rejects, the status becomes Rejected by Team Leader. If the Admin returns it, the status becomes Returned by Admin. Both can include a reason. If you cancel it yourself, the status becomes Cancelled.' },
       { h: 'Tracking status', steps: [
         'Open the History tab to see all of your requests.',
-        'The colored stripe on each card shows the status: orange for waiting, blue for waiting validation, green for completed, and red for rejected or returned.',
+        'The colored stripe on each card shows the status: orange for waiting, blue for waiting validation, green for completed, red for rejected or returned, and gray for cancelled.',
         'Notes from the Team Leader or Admin appear below the request card.',
       ]},
       { h: 'Schedule', steps: [
