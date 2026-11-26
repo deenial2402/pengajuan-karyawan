@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f5e63">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>Pengajuan Karyawan</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<script src="/assets/app.js"></script>
+<script>
+const { S, $, esc, fd, today, shiftTag, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES } = App;
+const RANGE = ['cuti', 'sakit'];
+const V = { tab: 'form', type: 'cuti', note: '', photos: [], reqs: [] };
+
+/* ---------- Login ---------- */
+function viewLogin() {
+  return `<section class="auth"><form class="sheet" onsubmit="doLogin(event)">
+    <h1>Pengajuan Karyawan</h1>
+    <p class="meta">Masuk dengan ID atau Ops ID serta password yang terdaftar.</p>
+    <label>ID atau Ops ID<input name="login" autocomplete="username" autocapitalize="characters" required></label>
+    <label>Password<input name="pin" type="password" autocomplete="current-password" required></label>
+    <button class="btn">Masuk</button>
+  </form></section>`;
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  const g = (n) => e.target.elements[n].value;
+  try {
+    const d = await api('login', { id: g('login').trim(), pin: g('pin') });
+    saveSession(d.token, d.user);
+    V.tab = 'form';
+    await load();
+  } catch (x) {
+    toast(x.message);
+  }
+}
+
+/* ---------- Form pengajuan ---------- */
+function setType(t) { V.type = t; render(); }
+
+function viewForm() {
+  const u = S.user, t = V.type, two = RANGE.includes(t);
+  const sel = (c) => [1, 2, 3].map((s) => `<option value="${s}" ${s == c ? 'selected' : ''}>Shift ${s} · ${SH[s]}</option>`).join('');
+  const shiftField = t === 'tukar' ? '' : `<label>Shift<select name="shift">${sel(1)}</select></label>`;
+  return `<h2>Buat pengajuan</h2>
+  <div class="types">${Object.entries(T).map(([k, n]) => `<button type="button" class="chip ${k === t ? 'on' : ''}" onclick="setType('${k}')">${n}</button>`).join('')}</div>
+  <form class="sheet" onsubmit="send(event)">
+    <div class="who"><span>${esc(u.name)}</span><span>Ops ${esc(u.ops || '-')}</span></div>
+    <div class="row">
+      <label>${two ? 'Mulai' : 'Tanggal'}<input type="date" name="from" min="${today()}" value="${today()}" required></label>
+      ${two ? `<label>Sampai<input type="date" name="to" min="${today()}" value="${today()}" required></label>` : ''}
+    </div>
+    ${t === 'tukar' ? `<div class="row">
+        <label>Shift saya<select name="shift">${sel(1)}</select></label>
+        <label>Pindah ke<select name="shift2">${sel(2)}</select></label>
+      </div>
+      <label>Nama rekan yang menukar<input name="partner" required></label>` : shiftField}
+    <label>${t === 'cuti' ? 'Alasan cuti' : t === 'sakit' ? 'Keluhan' : 'Alasan'}<textarea name="note" required oninput="V.note=this.value">${esc(V.note)}</textarea></label>
+    <div class="field">
+      <span class="lbl">${t === 'sakit' ? 'Foto surat dokter' : 'Foto pendukung'} (opsional, maks. 3)</span>
+      <input id="fi" type="file" accept="image/*" multiple hidden onchange="addPh(this)">
+      <button type="button" class="ghost" onclick="$('#fi').click()">Unggah foto</button>
+      <div class="thumbs">${V.photos.map((p, i) => `<div><img src="${p}" alt="Foto ${i + 1}"><button type="button" onclick="rmPh(${i})" aria-label="Hapus foto">×</button></div>`).join('')}</div>
+    </div>
+    <button class="btn">Kirim ke Team Leader</button>
+  </form>`;
+}
+
+async function send(e) {
+  e.preventDefault();
+  const g = (n) => e.target.elements[n]?.value;
+  const t = V.type;
+  if (t === 'tukar' && g('shift') === g('shift2')) return toast('Shift tujuan harus berbeda');
+  const body = { type: t, from: g('from'), to: g('to'), shift: g('shift'), shift2: g('shift2'), partner: g('partner'), note: g('note'), photos: V.photos };
+  try {
+    await api('requests', body);
+    toast('Pengajuan terkirim ke Team Leader');
+    V.photos = [];
+    V.note = '';
+    V.tab = 'list';
+    await load();
+  } catch (x) {
+    toast(x.message);
+  }
+}
+
+/* ---------- Foto ---------- */
+function shrink(f) {
+  return new Promise((ok, no) => {
+    const im = new Image(), url = URL.createObjectURL(f);
+    im.onload = () => {
+      const k = Math.min(1, 1100 / Math.max(im.width, im.height));
+      const c = document.createElement('canvas');
+      c.width = im.width * k; c.height = im.height * k;
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      ok(c.toDataURL('image/jpeg', 0.7));
+    };
+    im.onerror = () => no(new Error('Foto tidak bisa dibaca'));
+    im.src = url;
+  });
+}
+async function addPh(el) {
+  for (const f of [...el.files]) {
+    if (V.photos.length >= 3) { toast('Maksimal 3 foto'); break; }
+    try { V.photos.push(await shrink(f)); } catch (x) { toast(x.message); }
+  }
+  el.value = '';
+  render();
+}
+function rmPh(i) { V.photos.splice(i, 1); render(); }
+
+async function showPh(id) {
+  try {
+    const p = await api('photos/' + id);
+    const o = document.createElement('div');
+    o.id = 'ov';
+    o.onclick = () => o.remove();
+    o.innerHTML = p.map((x) => `<img src="${x}" alt="Foto pengajuan">`).join('') +
+      `<p class="ovw">${esc(S.user.name)} · Ops ${esc(S.user.ops || S.user.id)} · Ketuk untuk menutup</p>`;
+    document.body.appendChild(o);
+  } catch (x) { toast(x.message); }
+}
+
+/* ---------- Riwayat ---------- */
+function reqCard(r) {
+  const [lbl, cls] = ST[r.status] || [r.status, ''];
+  return `<article class="item ${cls}">
+    <div class="row1">
+      <div><h3>${T[r.type]}</h3><div class="meta">${fd(r.from)}${r.to !== r.from ? ' – ' + fd(r.to) : ''}</div></div>
+      <span class="st ${cls}">${lbl}</span>
+    </div>
+    <div class="meta" style="margin-top:6px">${shiftTag(r.shift)}${r.shift2 ? ' → ' + shiftTag(r.shift2) : ''}${r.partner ? ' · Rekan: ' + esc(r.partner) : ''}</div>
+    <p>${esc(r.note)}</p>
+    ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">Lihat ${r.photos} foto</button>` : ''}
+    ${r.log.map((l) => `<div class="log">${esc(l.by)} ${ACT[l.action]}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
+  </article>`;
+}
+function viewList() {
+  return `<h2>Riwayat pengajuan</h2>${V.reqs.length ? V.reqs.map(reqCard).join('') : '<div class="empty">Belum ada pengajuan. Mulai dari tab Ajukan.</div>'}`;
+}
+
+/* ---------- Kerangka ---------- */
+function render() {
+  const u = S.user;
+  if (!u) { $('#app').innerHTML = viewLogin(); return; }
+  const tabs = [['form', 'Ajukan'], ['list', 'Riwayat']];
+  $('#app').innerHTML = `
+    <header class="top">
+      <div><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${ROLE[u.role] || u.role}</small></div>
+      <div class="acts">
+        ${BACKEND_ROLES.includes(u.role) ? '<a class="ghost sm" href="/backend/">Backend</a>' : ''}
+        <button class="ghost sm" onclick="logout()">Keluar</button>
+      </div>
+    </header>
+    <main>${V.tab === 'form' ? viewForm() : viewList()}</main>
+    <nav class="tabs">${tabs.map(([k, n]) => `<button class="${V.tab === k ? 'on' : ''}" onclick="go('${k}')">${n}</button>`).join('')}</nav>`;
+  watermark(u);
+}
+
+function go(k) {
+  V.tab = k;
+  if (k === 'list') load(); else render();
+}
+
+async function load() {
+  try { V.reqs = (await api('requests?scope=mine')).requests; } catch (x) { toast(x.message); }
+  render();
+}
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+S.user ? load() : render();
+</script>
+</body>
+</html>
