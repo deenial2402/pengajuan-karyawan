@@ -1,24 +1,118 @@
-/* Helper bersama untuk Frontend (/) dan Backend (/backend/). */
+/* Helper bersama Frontend (/) dan Backend (/backend/): bahasa, tema, API, sesi, dan watermark. */
 const App = (() => {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = (s) => document.querySelector(s);
   const SH = { 1: '00:00–09:00', 2: '08:00–17:00', 3: '16:00–01:00' };
-  const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Tanggal', tambah: 'Tambah Hari Kerja', izin: 'Berhalangan Hadir' };
-  const ST = {
-    menunggu_tl: ['Menunggu Team Leader', 'wait'],
-    disetujui_tl: ['Menunggu pemeriksaan Admin', 'info'],
-    selesai: ['Selesai', 'ok'],
-    ditolak_tl: ['Ditolak Team Leader', 'bad'],
-    dikembalikan: ['Dikembalikan Admin', 'bad'],
-  };
-  const ACT = { approve: 'menyetujui', reject: 'menolak', check: 'sudah memeriksa', return: 'mengembalikan' };
-  const ROLE = { karyawan: 'Karyawan', tl: 'Team Leader', admin: 'Admin', superadmin: 'Superadmin' };
   const BACKEND_ROLES = ['tl', 'admin', 'superadmin'];
+  const ST_CLS = { menunggu_tl: 'wait', disetujui_tl: 'info', selesai: 'ok', ditolak_tl: 'bad', dikembalikan: 'bad' };
 
-  const fd = (d) => new Date(d + 'T00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  const DICT = {
+    id: {
+      app_name: 'Palangka Raya DC',
+      login_sub_fe: 'Masuk dengan ID atau Ops ID dan password.',
+      login_sub_be: 'Khusus Team Leader, Admin, dan Superadmin.',
+      login_id: 'ID atau Ops ID', password: 'Password', login_btn: 'Masuk', logout: 'Keluar',
+      tab_work: 'Work Permit', tab_hist: 'Histori', tab_sched: 'Jadwal', tab_tutorial: 'Tutorial',
+      tab_queue: 'Antrian', tab_all: 'Semua', tab_recap: 'Rekap', tab_users: 'Pengguna',
+      backend: 'Backend', frontend: 'Frontend',
+      theme_light: 'Terang', theme_dark: 'Gelap', lang_switch: 'Ganti bahasa',
+      type_cuti: 'Cuti', type_sakit: 'Sakit', type_tukar: 'Tukar Tanggal', type_tambah: 'Tambah Hari Kerja', type_izin: 'Izin',
+      hint_cuti: 'Libur pada rentang tanggal', hint_sakit: 'Tidak masuk karena sakit', hint_tukar: 'Tukar tanggal kerja dengan tanggal pengganti', hint_tambah: 'Menambah hari kerja', hint_izin: 'Tidak bisa hadir pada shift tertentu',
+      start: 'Mulai', end: 'Sampai', date: 'Tanggal', shift: 'Shift',
+      swap_from: 'Tanggal kerja yang ditukar', swap_to: 'Tanggal pengganti', swap_hint: 'Tanggal kerja Anda diganti ke tanggal pengganti.',
+      reason_leave: 'Alasan cuti', complaint: 'Keluhan', reason: 'Alasan',
+      photo_doctor: 'Foto surat dokter', photo_support: 'Foto pendukung', photo_hint: '(opsional, maks. 3)',
+      upload_photo: 'Unggah foto', btn_send: 'Kirim', btn_download: 'Unduh', btn_delete: 'Hapus', btn_upload: 'Unggah',
+      view_photos: 'Lihat {n} foto', close_hint: 'Ketuk untuk menutup',
+      st_menunggu_tl: 'Menunggu Approval Team Leader', st_disetujui_tl: 'Menunggu Validasi Admin', st_selesai: 'Selesai', st_ditolak_tl: 'Ditolak Team Leader', st_dikembalikan: 'Dikembalikan Admin',
+      act_approve: 'menyetujui', act_reject: 'menolak', act_check: 'sudah memvalidasi', act_return: 'mengembalikan',
+      btn_approve: 'Setujui', btn_reject: 'Tolak', btn_check: 'Validasi', btn_return: 'Kembalikan',
+      note_optional: 'Catatan (opsional)', note_required: 'Catatan (wajib jika menolak atau mengembalikan)', note_needed: 'Isi catatan dulu',
+      empty_hist: 'Belum ada pengajuan. Mulai dari tab Work Permit.',
+      empty_queue: 'Tidak ada pengajuan yang perlu tindakan.', empty_all: 'Belum ada pengajuan.', empty_search: 'Tidak ada pengajuan yang cocok.',
+      search_ph: 'Cari nama, Ops ID, jenis, status, tanggal (YYYY-MM-DD)…',
+      sched_title: 'Judul jadwal', sched_file: 'File (PDF atau foto, maks. 4 MB)', sched_upload: 'Unggah jadwal',
+      sched_empty: 'Belum ada jadwal.', uploaded_on: 'Diunggah', sched_ok: 'Jadwal diunggah', sched_deleted: 'Jadwal dihapus', sched_confirm: 'Hapus jadwal ini?',
+      err_same_date: 'Tanggal pengganti harus berbeda dari tanggal yang ditukar',
+      err_file_big: 'File lebih dari 4 MB', err_no_access: 'Akun ini tidak punya akses Backend. Gunakan Frontend.',
+      toast_sent: 'Terkirim', toast_saved: 'Tersimpan', toast_downloaded: 'Berkas diunduh', toast_recap: 'Rekap diunduh',
+      no_photo: 'Tidak ada foto', rekap_title: 'Rekap', month: 'Bulan', export_month: 'Ekspor bulan ini', export_all: 'Ekspor semua',
+      recap_note: 'Sakit dan Izin dihitung per shift. Cuti dihitung per hari tanpa shift. Pengajuan yang ditolak tidak dihitung.',
+      recap_nodata: 'Tidak ada data pada bulan ini.', recap_none: 'Belum ada', hari_orang: 'hari-orang',
+      cuti_per_hari: 'Dihitung per hari, tidak per shift', per_tanggal: 'Per tanggal', date_col: 'Tanggal',
+      users_note: 'Akun, password, dan userlevel dikelola di spreadsheet. Ubah di sana, lalu tunggu sekitar satu menit.',
+      nonaktif: 'Nonaktif', no_data: 'Belum ada data.', rejected_note: 'Ditolak',
+      ops_label: 'Ops', rekan: 'Rekan', uploaded: 'Diunggah', by: 'oleh',
+      role_karyawan: 'Karyawan', role_tl: 'Team Leader', role_admin: 'Admin', role_superadmin: 'Superadmin',
+      queue_title: 'Antrian persetujuan', all_title: 'Semua pengajuan', new_request: 'Work Permit',
+      sched_head: 'Jadwal', sched_hint: 'Jadwal diunggah oleh Backend. Anda bisa mengunduh berkas PDF atau foto untuk memeriksa jadwal.',
+      rel_cuti: 'Cuti', rel_izin: 'Izin',
+    },
+    en: {
+      app_name: 'Palangka Raya DC',
+      login_sub_fe: 'Sign in with your ID or Ops ID and password.',
+      login_sub_be: 'For Team Leaders, Admins, and Superadmins only.',
+      login_id: 'ID or Ops ID', password: 'Password', login_btn: 'Sign in', logout: 'Sign out',
+      tab_work: 'Work Permit', tab_hist: 'History', tab_sched: 'Schedule', tab_tutorial: 'Tutorial',
+      tab_queue: 'Queue', tab_all: 'All', tab_recap: 'Recap', tab_users: 'Users',
+      backend: 'Backend', frontend: 'Frontend',
+      theme_light: 'Light', theme_dark: 'Dark', lang_switch: 'Change language',
+      type_cuti: 'Leave', type_sakit: 'Sick Leave', type_tukar: 'Date Swap', type_tambah: 'Extra Workday', type_izin: 'Permission',
+      hint_cuti: 'Leave over a date range', hint_sakit: 'Unable to work due to illness', hint_tukar: 'Swap a workday with a replacement date', hint_tambah: 'Add a workday', hint_izin: 'Unable to attend a specific shift',
+      start: 'Start', end: 'End', date: 'Date', shift: 'Shift',
+      swap_from: 'Workday to swap', swap_to: 'Replacement date', swap_hint: 'Your workday will move to the replacement date.',
+      reason_leave: 'Leave reason', complaint: 'Complaint', reason: 'Reason',
+      photo_doctor: 'Doctor’s note photo', photo_support: 'Supporting photo', photo_hint: '(optional, max 3)',
+      upload_photo: 'Upload photo', btn_send: 'Submit', btn_download: 'Download', btn_delete: 'Delete', btn_upload: 'Upload',
+      view_photos: 'View {n} photo(s)', close_hint: 'Tap to close',
+      st_menunggu_tl: 'Waiting Team Leader Approval', st_disetujui_tl: 'Waiting Admin Validation', st_selesai: 'Completed', st_ditolak_tl: 'Rejected by Team Leader', st_dikembalikan: 'Returned by Admin',
+      act_approve: 'approved', act_reject: 'rejected', act_check: 'validated', act_return: 'returned',
+      btn_approve: 'Approve', btn_reject: 'Reject', btn_check: 'Validate', btn_return: 'Return',
+      note_optional: 'Note (optional)', note_required: 'Note (required to reject or return)', note_needed: 'Please add a note first',
+      empty_hist: 'No requests yet. Start from the Work Permit tab.',
+      empty_queue: 'Nothing needs action.', empty_all: 'No requests yet.', empty_search: 'No matching requests.',
+      search_ph: 'Search name, Ops ID, type, status, date (YYYY-MM-DD)…',
+      sched_title: 'Schedule title', sched_file: 'File (PDF or photo, max 4 MB)', sched_upload: 'Upload schedule',
+      sched_empty: 'No schedule yet.', uploaded_on: 'Uploaded', sched_ok: 'Schedule uploaded', sched_deleted: 'Schedule deleted', sched_confirm: 'Delete this schedule?',
+      err_same_date: 'Replacement date must differ from the workday to swap',
+      err_file_big: 'File is larger than 4 MB', err_no_access: 'This account has no Backend access. Use the Frontend.',
+      toast_sent: 'Submitted', toast_saved: 'Saved', toast_downloaded: 'File downloaded', toast_recap: 'Recap downloaded',
+      no_photo: 'No photos', rekap_title: 'Recap', month: 'Month', export_month: 'Export this month', export_all: 'Export all',
+      recap_note: 'Sick Leave and Permission are counted per shift. Leave is counted per day without shift. Rejected requests are not counted.',
+      recap_nodata: 'No data this month.', recap_none: 'None yet', hari_orang: 'person-days',
+      cuti_per_hari: 'Counted per day, not per shift', per_tanggal: 'By date', date_col: 'Date',
+      users_note: 'Accounts, passwords, and user levels are managed in the spreadsheet. Change them there; updates take about a minute.',
+      nonaktif: 'Inactive', no_data: 'No data yet.', rejected_note: 'Rejected',
+      ops_label: 'Ops', rekan: 'Partner', uploaded: 'Uploaded', by: 'by',
+      role_karyawan: 'Employee', role_tl: 'Team Leader', role_admin: 'Admin', role_superadmin: 'Superadmin',
+      queue_title: 'Approval queue', all_title: 'All requests', new_request: 'Work Permit',
+      sched_head: 'Schedule', sched_hint: 'Schedules are uploaded by the Backend. Download the PDF or photo to check your schedule.',
+      rel_cuti: 'Leave', rel_izin: 'Permission',
+    },
+  };
+
+  const prefs = {
+    lang: localStorage.getItem('pk_lang') || 'id',
+    theme: localStorage.getItem('pk_theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+  };
+  const t = (k, v = {}) => (DICT[prefs.lang][k] ?? DICT.id[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+  const applyPrefs = () => { document.documentElement.dataset.theme = prefs.theme; document.documentElement.lang = prefs.lang; };
+  applyPrefs();
+  function toggleLang() { prefs.lang = prefs.lang === 'id' ? 'en' : 'id'; localStorage.setItem('pk_lang', prefs.lang); applyPrefs(); }
+  function toggleTheme() { prefs.theme = prefs.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('pk_theme', prefs.theme); applyPrefs(); }
+  const prefsBar = () => `<div class="prefs">
+    <button type="button" class="ghost sm" onclick="App.toggleLang();render()" aria-label="${t('lang_switch')}">${prefs.lang === 'id' ? 'EN' : 'ID'}</button>
+    <button type="button" class="ghost sm" onclick="App.toggleTheme();render()">${prefs.theme === 'dark' ? t('theme_light') : t('theme_dark')}</button></div>`;
+
+  const locale = () => (prefs.lang === 'en' ? 'en-GB' : 'id-ID');
+  const fd = (d) => new Date(d + 'T00:00').toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
   const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Makassar' }).format(new Date());
-  const shiftTag = (n) => (n ? `<span class="sh sh${n}">Shift ${n}</span> <span class="meta">${SH[n] || ''}</span>` : '');
+  const shiftTag = (n) => (n ? `<span class="sh sh${n}">${t('shift')} ${n}</span> <span class="meta">${SH[n] || ''}</span>` : '');
   const when = (r) => (r.type === 'tukar' ? `${fd(r.from)} ⇄ ${fd(r.to)}` : r.to !== r.from ? `${fd(r.from)} – ${fd(r.to)}` : fd(r.from));
+  const typeName = (k) => t('type_' + k);
+  const stLabel = (k) => t('st_' + k);
+  const actLabel = (a) => t('act_' + a);
+  const roleName = (r) => t('role_' + r);
 
   const S = {
     tok: localStorage.getItem('pk_tok'),
@@ -26,11 +120,11 @@ const App = (() => {
   };
 
   function toast(m) {
-    const t = $('#toast');
-    t.textContent = m;
-    t.className = 'show';
+    const el = $('#toast');
+    el.textContent = m;
+    el.className = 'show';
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => (t.className = ''), 2600);
+    toast._t = setTimeout(() => (el.className = ''), 2600);
   }
 
   function saveSession(tok, user) {
@@ -46,9 +140,9 @@ const App = (() => {
     location.reload();
   }
 
-  async function api(path, body) {
+  async function api(path, body, opts = {}) {
     const r = await fetch('/api/' + path, {
-      method: body ? 'POST' : 'GET',
+      method: opts.method || (body ? 'POST' : 'GET'),
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + (S.tok || '') },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -61,7 +155,19 @@ const App = (() => {
     return d;
   }
 
-  // Watermark diagonal berisi Nama & Ops ID, tampil di atas konten tapi tidak bisa diklik.
+  /** Mengunduh berkas (jadwal) dengan header login. */
+  async function download(id, name) {
+    const r = await fetch('/api/jadwal/' + encodeURIComponent(id), { headers: { authorization: 'Bearer ' + S.tok } });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Gagal mengunduh');
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name || 'jadwal';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  /** Watermark diagonal berisi Nama & Ops ID. */
   function watermark(u) {
     if (!u) return;
     const txt = `${u.name} · Ops ${u.ops || u.id}`;
@@ -75,5 +181,9 @@ const App = (() => {
     el.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
 
-  return { S, $, esc, fd, today, shiftTag, when, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES };
+  return {
+    S, $, esc, fd, today, shiftTag, when, toast, api, download, saveSession, logout, watermark,
+    t, typeName, stLabel, actLabel, roleName, prefsBar, toggleLang, toggleTheme, prefs,
+    SH, ST_CLS, BACKEND_ROLES,
+  };
 })();

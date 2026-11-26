@@ -7,7 +7,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<title>Palangka Raya DC · Pengajuan Karyawan</title>
+<title>Palangka Raya DC · Work Permit</title>
 <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
@@ -15,27 +15,25 @@
 <div id="toast"></div>
 <script src="/assets/app.js"></script>
 <script>
-const { S, $, esc, fd, today, shiftTag, when, toast, api, saveSession, logout, watermark, SH, T, ST, ACT, ROLE, BACKEND_ROLES } = App;
-const RANGE = ['cuti', 'sakit'];        // rentang tanggal
-const SHIFT_TYPES = ['sakit', 'izin'];  // hanya ini yang memakai pilihan shift
-const KIND_HINT = {
-  cuti: 'Libur pada rentang tanggal',
-  sakit: 'Tidak masuk karena sakit',
-  tukar: 'Tukar tanggal kerja dengan rekan',
-  tambah: 'Menambah hari kerja',
-  izin: 'Tidak bisa hadir pada shift tertentu',
-};
-const V = { tab: 'form', type: 'cuti', note: '', photos: [], reqs: [] };
+const { S, $, esc, fd, today, shiftTag, when, toast, api, download, saveSession, logout, watermark, t, typeName, stLabel, actLabel, roleName, prefsBar, SH, ST_CLS, BACKEND_ROLES } = App;
+
+const RANGE = ['cuti', 'sakit'];          // rentang tanggal
+const SHIFT_TYPES = ['sakit', 'izin'];    // hanya ini yang memakai shift
+const KINDS = ['cuti', 'sakit', 'tukar', 'tambah', 'izin'];
+const V = { tab: 'form', type: 'cuti', note: '', photos: [], reqs: [], sched: [] };
 
 /* ---------- Login ---------- */
 function viewLogin() {
-  return `<section class="auth"><div class="brand-mark">PKY</div><form class="sheet" onsubmit="doLogin(event)">
-    <h1>Palangka Raya DC</h1>
-    <p class="meta">Masuk dengan ID atau Ops ID serta password yang terdaftar.</p>
-    <label>ID atau Ops ID<input name="login" autocomplete="username" autocapitalize="characters" required></label>
-    <label>Password<input name="pin" type="password" autocomplete="current-password" required></label>
-    <button class="btn">Masuk</button>
-  </form></section>`;
+  return `<section class="auth">
+    <div class="auth-top">${prefsBar()}</div>
+    <div class="brand-mark">PKY</div>
+    <h1>${t('app_name')}</h1>
+    <form class="sheet" onsubmit="doLogin(event)">
+      <p class="meta">${t('login_sub_fe')}</p>
+      <label>${t('login_id')}<input name="login" autocomplete="username" autocapitalize="characters" required></label>
+      <label>${t('password')}<input name="pin" type="password" autocomplete="current-password" required></label>
+      <button class="btn">${t('login_btn')}</button>
+    </form></section>`;
 }
 
 async function doLogin(e) {
@@ -46,74 +44,68 @@ async function doLogin(e) {
     saveSession(d.token, d.user);
     V.tab = 'form';
     await load();
-  } catch (x) {
-    toast(x.message);
-  }
+  } catch (x) { toast(x.message); }
 }
 
-/* ---------- Form pengajuan ---------- */
-function setType(t) { V.type = t; render(); }
+/* ---------- Work Permit (form) ---------- */
+function setType(k) { V.type = k; render(); }
 
 function viewForm() {
-  const t = V.type, u = S.user;
-  const hasRange = RANGE.includes(t);
-  const sel = [1, 2, 3].map((n) => `<option value="${n}">Shift ${n} · ${SH[n]}</option>`).join('');
-  const now = today();
+  const tp = V.type, now = today();
+  const sel = [1, 2, 3].map((n) => `<option value="${n}">${t('shift')} ${n} · ${SH[n]}</option>`).join('');
   let dates;
-  if (t === 'tukar') {
+  if (tp === 'tukar') {
+    dates = `<div class="swap">
+        <label class="swap-card"><span>${t('swap_from')}</span><input type="date" name="from" min="${now}" value="${now}" required></label>
+        <div class="swap-arrow" aria-hidden="true">⇄</div>
+        <label class="swap-card"><span>${t('swap_to')}</span><input type="date" name="to" min="${now}" required></label>
+      </div>
+      <p class="meta" style="margin-top:6px">${t('swap_hint')}</p>`;
+  } else if (RANGE.includes(tp)) {
     dates = `<div class="row">
-      <label>Tanggal kerja yang ditukar<input type="date" name="from" min="${now}" value="${now}" required></label>
-      <label>Tanggal pengganti<input type="date" name="to" min="${now}" value="${now}" required></label></div>`;
-  } else if (hasRange) {
-    dates = `<div class="row">
-      <label>Mulai<input type="date" name="from" min="${now}" value="${now}" required></label>
-      <label>Sampai<input type="date" name="to" min="${now}" value="${now}" required></label></div>`;
+        <label>${t('start')}<input type="date" name="from" min="${now}" value="${now}" required></label>
+        <label>${t('end')}<input type="date" name="to" min="${now}" value="${now}" required></label></div>`;
   } else {
-    dates = `<label>Tanggal<input type="date" name="from" min="${now}" value="${now}" required></label>`;
+    dates = `<label>${t('date')}<input type="date" name="from" min="${now}" value="${now}" required></label>`;
   }
-  const noteLabel = t === 'cuti' ? 'Alasan cuti' : t === 'sakit' ? 'Keluhan' : 'Alasan';
-  return `<h2>Buat pengajuan</h2>
-  <div class="kinds">${Object.entries(T).map(([k, n]) => `<button type="button" class="kind ${k === t ? 'on' : ''}" onclick="setType('${k}')"><b>${n}</b><span>${KIND_HINT[k]}</span></button>`).join('')}</div>
+  const photoLabel = tp === 'sakit' ? t('photo_doctor') : t('photo_support');
+  return `<h2>${t('tab_work')}</h2>
+  <div class="kinds">${KINDS.map((k) => `<button type="button" class="kind ${k === tp ? 'on' : ''}" onclick="setType('${k}')"><b>${typeName(k)}</b><span>${t('hint_' + k)}</span></button>`).join('')}</div>
   <form class="sheet" onsubmit="send(event)">
-    <div class="who"><span>${esc(u.name)}</span><span>Ops ${esc(u.ops || '-')}</span></div>
+    <div class="who"><span>${esc(S.user.name)}</span><span>Ops ${esc(S.user.ops || '-')}</span></div>
     ${dates}
-    ${SHIFT_TYPES.includes(t) ? `<label>Shift<select name="shift">${sel}</select></label>` : ''}
-    ${t === 'tukar' ? `<label>Nama rekan yang menukar<input name="partner" required></label>` : ''}
-    <label>${noteLabel}<textarea name="note" required oninput="V.note=this.value">${esc(V.note)}</textarea></label>
+    ${SHIFT_TYPES.includes(tp) ? `<label>${t('shift')}<select name="shift">${sel}</select></label>` : ''}
+    <label>${t('reason')}<textarea name="note" required oninput="V.note=this.value">${esc(V.note)}</textarea></label>
     <div class="field">
-      <span class="lbl">${t === 'sakit' ? 'Foto surat dokter' : 'Foto pendukung'} (opsional, maks. 3)</span>
+      <span class="lbl">${photoLabel} ${t('photo_hint')}</span>
       <input id="fi" type="file" accept="image/*" multiple hidden onchange="addPh(this)">
-      <button type="button" class="ghost" onclick="$('#fi').click()">Unggah foto</button>
-      <div class="thumbs">${V.photos.map((p, i) => `<div><img src="${p}" alt="Foto ${i + 1}"><button type="button" onclick="rmPh(${i})" aria-label="Hapus foto">×</button></div>`).join('')}</div>
+      <button type="button" class="ghost" onclick="$('#fi').click()">${t('upload_photo')}</button>
+      <div class="thumbs">${V.photos.map((p, i) => `<div><img src="${p}" alt=""><button type="button" onclick="rmPh(${i})" aria-label="×">×</button></div>`).join('')}</div>
     </div>
-    <button class="btn">Kirim ke Team Leader</button>
+    <button class="btn">${t('btn_send')}</button>
   </form>`;
 }
 
 async function send(e) {
   e.preventDefault();
   const g = (n) => e.target.elements[n]?.value;
-  const t = V.type;
   const body = {
-    type: t,
+    type: V.type,
     from: g('from'),
     to: g('to') || g('from'),
     shift: g('shift'),
-    partner: g('partner'),
     note: g('note'),
     photos: V.photos,
   };
-  if (t === 'tukar' && body.from === body.to) return toast('Tanggal pengganti harus berbeda dari tanggal yang ditukar');
+  if (body.type === 'tukar' && body.from === body.to) return toast(t('err_same_date'));
   try {
     await api('requests', body);
-    toast('Pengajuan terkirim ke Team Leader');
+    toast(t('toast_sent'));
     V.photos = [];
     V.note = '';
     V.tab = 'list';
     await load();
-  } catch (x) {
-    toast(x.message);
-  }
+  } catch (x) { toast(x.message); }
 }
 
 /* ---------- Foto ---------- */
@@ -134,7 +126,7 @@ function shrink(f) {
 }
 async function addPh(el) {
   for (const f of [...el.files]) {
-    if (V.photos.length >= 3) { toast('Maksimal 3 foto'); break; }
+    if (V.photos.length >= 3) { toast('Maks. 3 foto'); break; }
     try { V.photos.push(await shrink(f)); } catch (x) { toast(x.message); }
   }
   el.value = '';
@@ -145,58 +137,160 @@ function rmPh(i) { V.photos.splice(i, 1); render(); }
 async function showPh(id) {
   try {
     const p = await api('photos/' + id);
+    if (!p.length) return toast(t('no_photo'));
     const o = document.createElement('div');
     o.id = 'ov';
     o.onclick = () => o.remove();
-    o.innerHTML = p.map((x) => `<img src="${x}" alt="Foto pengajuan">`).join('') +
-      `<p class="ovw">${esc(S.user.name)} · Ops ${esc(S.user.ops || S.user.id)} · Ketuk untuk menutup</p>`;
+    o.innerHTML = p.map((x) => `<img src="${x}" alt="">`).join('') +
+      `<p class="ovw">${esc(S.user.name)} · Ops ${esc(S.user.ops || S.user.id)} · ${t('close_hint')}</p>`;
     document.body.appendChild(o);
   } catch (x) { toast(x.message); }
 }
 
-/* ---------- Riwayat ---------- */
+/* ---------- Histori ---------- */
 function reqCard(r) {
-  const [lbl, cls] = ST[r.status] || [r.status, ''];
+  const cls = ST_CLS[r.status] || '';
   return `<article class="item ${cls}">
     <div class="row1">
-      <div><h3>${T[r.type]}</h3><div class="meta">${when(r)}</div></div>
-      <span class="st ${cls}">${lbl}</span>
+      <div><h3>${typeName(r.type)}</h3><div class="meta">${when(r)}</div></div>
+      <span class="st ${cls}">${stLabel(r.status)}</span>
     </div>
-    <div class="meta" style="margin-top:6px">${shiftTag(r.shift)}${r.partner ? (r.shift ? ' · ' : '') + 'Rekan: ' + esc(r.partner) : ''}</div>
+    ${r.shift ? `<div class="meta" style="margin-top:6px">${shiftTag(r.shift)}</div>` : ''}
     <p>${esc(r.note)}</p>
-    ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">Lihat ${r.photos} foto</button>` : ''}
-    ${r.log.map((l) => `<div class="log">${esc(l.by)} ${ACT[l.action]}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
+    ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">${t('view_photos', { n: r.photos })}</button>` : ''}
+    ${r.log.map((l) => `<div class="log">${esc(l.by)} ${actLabel(l.action)}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
   </article>`;
 }
 function viewList() {
-  return `<h2>Riwayat pengajuan</h2>${V.reqs.length ? V.reqs.map(reqCard).join('') : '<div class="empty">Belum ada pengajuan. Mulai dari tab Ajukan.</div>'}`;
+  return `<h2>${t('tab_hist')}</h2>${V.reqs.length ? V.reqs.map(reqCard).join('') : `<div class="empty">${t('empty_hist')}</div>`}`;
+}
+
+/* ---------- Jadwal (unduh saja) ---------- */
+function viewSched() {
+  return `<h2>${t('sched_head')}</h2>
+  <p class="meta">${t('sched_hint')}</p>
+  ${V.sched.length ? V.sched.map((s) => `<article class="item">
+      <div class="row1"><div><h3>${esc(s.title)}</h3><div class="meta">${esc(s.name)} · ${t('uploaded_on')} ${fd(s.created.slice(0, 10))}</div></div></div>
+      <button class="btn sm" style="margin-top:10px" data-id="${s.id}" data-name="${esc(s.name)}" onclick="dl(this)">${t('btn_download')}</button>
+    </article>`).join('') : `<div class="empty">${t('sched_empty')}</div>`}`;
+}
+async function dl(el) {
+  try { await download(el.dataset.id, el.dataset.name); toast(t('toast_downloaded')); }
+  catch (x) { toast(x.message); }
+}
+
+/* ---------- Tutorial ---------- */
+const TUT = {
+  id: {
+    title: 'Tutorial Work Permit',
+    lead: 'Panduan singkat membuat pengajuan dan memantau prosesnya.',
+    sections: [
+      { h: 'Cara membuat pengajuan', steps: [
+        'Buka tab Work Permit, lalu pilih jenis pengajuan: Cuti, Sakit, Tukar Tanggal, Tambah Hari Kerja, atau Izin.',
+        'Isi tanggal. Cuti dan Sakit memakai Mulai dan Sampai. Izin dan Tambah Hari Kerja memakai satu tanggal. Tukar Tanggal memakai tanggal kerja yang ditukar dan tanggal pengganti.',
+        'Pilih shift. Shift hanya perlu diisi untuk Sakit dan Izin.',
+        'Isi Alasan dengan jelas.',
+        'Tambahkan foto pendukung jika ada (opsional, maks. 3). Untuk Sakit, unggah foto surat dokter.',
+        'Tekan Kirim. Pengajuan langsung masuk ke Team Leader.',
+      ]},
+      { h: 'Aturan penting', steps: [
+        'Tanggal tidak boleh sebelum hari ini.',
+        'Pada Tukar Tanggal, tanggal pengganti harus berbeda dari tanggal yang ditukar.',
+        'Pengajuan yang sudah dikirim tidak bisa diubah. Jika ada kesalahan, hubungi Team Leader atau Admin.',
+      ]},
+      { h: 'Alur pengajuan', flow: true, steps: [
+        'Kirim oleh karyawan',
+        'Menunggu Approval Team Leader',
+        'Menunggu Validasi Admin',
+        'Selesai',
+      ], note: 'Jika Team Leader menolak, status menjadi Ditolak Team Leader. Jika Admin mengembalikan, status menjadi Dikembalikan Admin. Keduanya dapat disertai catatan alasan.' },
+      { h: 'Memantau status', steps: [
+        'Buka tab Histori untuk melihat semua pengajuan Anda.',
+        'Warna garis di kiri kartu menunjukkan status: oranye untuk menunggu, biru untuk menunggu validasi, hijau untuk selesai, dan merah untuk ditolak atau dikembalikan.',
+        'Catatan dari Team Leader atau Admin tampil di bawah kartu pengajuan.',
+      ]},
+      { h: 'Jadwal', steps: [
+        'Buka tab Jadwal untuk melihat jadwal yang diunggah Backend.',
+        'Tekan Unduh untuk menyimpan file PDF atau foto jadwal ke perangkat Anda.',
+      ]},
+    ],
+  },
+  en: {
+    title: 'Work Permit Tutorial',
+    lead: 'A short guide to submitting requests and tracking their progress.',
+    sections: [
+      { h: 'How to submit a request', steps: [
+        'Open the Work Permit tab and choose a request type: Leave, Sick Leave, Date Swap, Extra Workday, or Permission.',
+        'Fill in the dates. Leave and Sick Leave use Start and End. Permission and Extra Workday use one date. Date Swap uses the workday to swap and the replacement date.',
+        'Choose a shift. A shift is only required for Sick Leave and Permission.',
+        'Fill in the Reason clearly.',
+        'Add supporting photos if you have any (optional, max 3). For Sick Leave, upload the doctor’s note.',
+        'Tap Submit. The request goes straight to your Team Leader.',
+      ]},
+      { h: 'Important rules', steps: [
+        'Dates cannot be earlier than today.',
+        'For Date Swap, the replacement date must be different from the workday to swap.',
+        'A submitted request cannot be edited. If there is a mistake, contact your Team Leader or Admin.',
+      ]},
+      { h: 'Request flow', flow: true, steps: [
+        'Submitted by employee',
+        'Waiting Team Leader Approval',
+        'Waiting Admin Validation',
+        'Completed',
+      ], note: 'If the Team Leader rejects, the status becomes Rejected by Team Leader. If the Admin returns it, the status becomes Returned by Admin. Both can include a reason.' },
+      { h: 'Tracking status', steps: [
+        'Open the History tab to see all of your requests.',
+        'The colored stripe on each card shows the status: orange for waiting, blue for waiting validation, green for completed, and red for rejected or returned.',
+        'Notes from the Team Leader or Admin appear below the request card.',
+      ]},
+      { h: 'Schedule', steps: [
+        'Open the Schedule tab to see schedules uploaded by the Backend.',
+        'Tap Download to save the PDF or photo to your device.',
+      ]},
+    ],
+  },
+};
+
+function viewTutorial() {
+  const c = TUT[App.prefs.lang] || TUT.id;
+  return `<h2>${c.title}</h2><p class="meta" style="margin-bottom:8px">${c.lead}</p>
+  ${c.sections.map((sec) => `<section class="sheet">
+      <h3>${sec.h}</h3>
+      ${sec.flow
+        ? `<div class="flow">${sec.steps.map((s, i) => `${i ? '<span class="arrow" aria-hidden="true">→</span>' : ''}<span class="fstep">${s}</span>`).join('')}</div>${sec.note ? `<p class="meta" style="margin-top:10px">${sec.note}</p>` : ''}`
+        : `<ol class="steps">${sec.steps.map((s) => `<li>${s}</li>`).join('')}</ol>`}
+    </section>`).join('')}`;
 }
 
 /* ---------- Kerangka ---------- */
 function render() {
   const u = S.user;
   if (!u) { $('#app').innerHTML = viewLogin(); return; }
-  const tabs = [['form', 'Ajukan'], ['list', 'Riwayat']];
+  const tabs = [['form', t('tab_work')], ['list', t('tab_hist')], ['sched', t('tab_sched')], ['tutorial', t('tab_tutorial')]];
+  const body = V.tab === 'form' ? viewForm() : V.tab === 'list' ? viewList() : V.tab === 'sched' ? viewSched() : viewTutorial();
   $('#app').innerHTML = `
     <header class="top">
-      <div><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${ROLE[u.role] || u.role}</small></div>
+      <div><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${roleName(u.role)}</small></div>
       <div class="acts">
-        ${BACKEND_ROLES.includes(u.role) ? '<a class="ghost sm" href="/backend/">Backend</a>' : ''}
-        <button class="ghost sm" onclick="logout()">Keluar</button>
+        ${prefsBar()}
+        ${BACKEND_ROLES.includes(u.role) ? `<a class="ghost sm" href="/backend/">${t('backend')}</a>` : ''}
+        <button class="ghost sm" onclick="logout()">${t('logout')}</button>
       </div>
     </header>
-    <main>${V.tab === 'form' ? viewForm() : viewList()}</main>
+    <main>${body}</main>
     <nav class="tabs">${tabs.map(([k, n]) => `<button class="${V.tab === k ? 'on' : ''}" onclick="go('${k}')">${n}</button>`).join('')}</nav>`;
   watermark(u);
 }
 
-function go(k) {
+async function go(k) {
   V.tab = k;
-  if (k === 'list') load(); else render();
+  if (k === 'list' || k === 'sched') return load();
+  render();
 }
 
 async function load() {
   try { V.reqs = (await api('requests?scope=mine')).requests; } catch (x) { toast(x.message); }
+  try { V.sched = (await api('jadwal')).items; } catch (x) { toast(x.message); }
   render();
 }
 

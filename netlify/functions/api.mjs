@@ -9,7 +9,7 @@ const BACKEND_ROLES = ['tl', 'admin', 'superadmin'];
 const TYPES = ['cuti', 'sakit', 'tukar', 'tambah', 'izin'];
 const RANGE_TYPES = ['cuti', 'sakit']; // hanya ini yang boleh rentang tanggal
 const SHIFT_TYPES = ['sakit', 'izin']; // hanya ini yang memakai shift
-const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Tanggal', tambah: 'Tambah Hari Kerja', izin: 'Berhalangan Hadir' };
+const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Tanggal', tambah: 'Tambah Hari Kerja', izin: 'Izin' };
 const ACT = { approve: 'menyetujui', reject: 'menolak', check: 'sudah memeriksa', return: 'mengembalikan' };
 const TZ = 'Asia/Makassar';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -23,6 +23,9 @@ const RULES = {
 };
 
 const photoStore = () => getStore('pengajuan-foto');
+const jadwalStore = () => getStore('jadwal');
+const JADWAL_MIME = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+const JADWAL_MAX = 4 * 1024 * 1024;
 const json = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'content-type': 'application/json' } });
 const fail = (m, s = 400) => json({ error: m }, s);
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
@@ -97,9 +100,6 @@ async function createRequest(u, req) {
   const shift = SHIFT_TYPES.includes(b.type) ? Number(b.shift) : null;
   if (SHIFT_TYPES.includes(b.type) && ![1, 2, 3].includes(shift)) return fail('Pilih shift');
 
-  const partner = String(b.partner || '').trim();
-  if (b.type === 'tukar' && !partner) return fail('Isi nama rekan yang menukar');
-
   const photos = Array.isArray(b.photos) ? b.photos.slice(0, 3) : [];
   for (const p of photos) {
     if (typeof p !== 'string' || !p.startsWith('data:image/jpeg;base64,') || p.length > 1_500_000) {
@@ -119,7 +119,6 @@ async function createRequest(u, req) {
     to,
     shift,
     shift2: null,
-    partner: partner.slice(0, 120),
     note: note.slice(0, 1000),
     photos: photos.length,
     status: 'menunggu_tl',
@@ -166,6 +165,64 @@ async function users(u) {
   return json({ users: (await getUsers()).map(pub) });
 }
 
+// ---------- Jadwal: file PDF/foto dari Backend, bisa diunduh Frontend ----------
+async function jadwalList() {
+  const st = jadwalStore();
+  const { blobs } = await st.list({ prefix: 'm:' });
+  const items = (await Promise.all(blobs.map((b) => st.get(b.key, { type: 'json' }))))
+    .filter(Boolean)
+    .sort((a, b) => b.created.localeCompare(a.created));
+  return json({ items });
+}
+
+async function jadwalCreate(u, req) {
+  if (!BACKEND_ROLES.includes(u.role)) return fail('Akses ditolak', 403);
+  const b = await req.json().catch(() => null);
+  if (!b) return fail('Data tidak valid');
+  const title = String(b.title || '').trim().slice(0, 120);
+  if (!title) return fail('Isi judul jadwal');
+  const mime = String(b.mime || '');
+  if (!JADWAL_MIME.includes(mime)) return fail('Format harus PDF atau foto');
+  const prefix = `data:${mime};base64,`;
+  const data = String(b.data || '');
+  if (!data.startsWith(prefix)) return fail('File tidak valid');
+  const base64 = data.slice(prefix.length);
+  const size = Math.floor((base64.length * 3) / 4);
+  if (size > JADWAL_MAX) return fail('Ukuran file maksimal 4 MB');
+
+  const id = randomUUID();
+  const meta = {
+    id, title, mime, size,
+    name: String(b.name || 'jadwal').slice(0, 160),
+    created: new Date().toISOString(),
+    by: u.name,
+  };
+  const st = jadwalStore();
+  await st.setJSON(`m:${id}`, meta);
+  await st.set(`d:${id}`, base64);
+  return json({ item: meta }, 201);
+}
+
+async function jadwalFile(id) {
+  const st = jadwalStore();
+  const meta = await st.get(`m:${id}`, { type: 'json' });
+  if (!meta) return fail('Tidak ditemukan', 404);
+  const base64 = await st.get(`d:${id}`, { type: 'text' });
+  if (!base64) return fail('Berkas tidak ditemukan', 404);
+  const safe = meta.name.replace(/[^\w.\- ]/g, '_');
+  return new Response(Buffer.from(base64, 'base64'), {
+    headers: { 'content-type': meta.mime, 'content-disposition': `attachment; filename="${safe}"` },
+  });
+}
+
+async function jadwalDelete(u, id) {
+  if (!BACKEND_ROLES.includes(u.role)) return fail('Akses ditolak', 403);
+  const st = jadwalStore();
+  await st.delete(`m:${id}`);
+  await st.delete(`d:${id}`);
+  return json({ ok: true });
+}
+
 async function exportXlsx(u, url) {
   if (!BACKEND_ROLES.includes(u.role)) return fail('Akses ditolak', 403);
   const month = url.searchParams.get('month') || 'all';
@@ -181,7 +238,6 @@ async function exportXlsx(u, url) {
     { h: 'Tanggal / ditukar', w: 14, v: (r) => r.from },
     { h: 'Sampai / pengganti', w: 16, v: (r) => r.to },
     { h: 'Shift', w: 14, v: (r) => (r.shift ? `Shift ${r.shift}` : '-') },
-    { h: 'Rekan', w: 20, v: (r) => r.partner || '' },
     { h: 'Alasan', w: 40, v: (r) => r.note },
     { h: 'Status', w: 26, v: (r) => LABEL[r.status] || r.status },
     { h: 'Riwayat persetujuan', w: 50, v: (r) => r.log.map((l) => `${l.by} ${ACT[l.action] || l.action}${l.note ? ' (' + l.note + ')' : ''}`).join(' | ') },
@@ -244,6 +300,10 @@ export default async (req) => {
     if (p.startsWith('photos/') && m === 'GET') return await photos(u, decodeURIComponent(p.slice(7)));
     if (p === 'users' && m === 'GET') return await users(u);
     if (p === 'export' && m === 'GET') return await exportXlsx(u, url);
+    if (p === 'jadwal' && m === 'GET') return await jadwalList();
+    if (p === 'jadwal' && m === 'POST') return await jadwalCreate(u, req);
+    if (p.startsWith('jadwal/') && m === 'GET') return await jadwalFile(decodeURIComponent(p.slice(7)));
+    if (p.startsWith('jadwal/') && m === 'DELETE') return await jadwalDelete(u, decodeURIComponent(p.slice(7)));
 
     return fail('Tidak ditemukan', 404);
   } catch (e) {
