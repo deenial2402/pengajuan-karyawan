@@ -103,8 +103,8 @@ export async function getUsers() {
       role: String(r[3] || 'karyawan').trim().toLowerCase(),
       pin: String(r[4] || '').trim(),
       active: String(r[5] || 'Ya').trim().toLowerCase() !== 'tidak',
-      // Kosong atau tidak dikenali dianggap Reguler, agar akses tidak hilang karena kolom belum diisi.
-      kind: String(r[6] || '').trim().toLowerCase() === 'operator' ? 'operator' : 'reguler',
+      // operator / reguler / kosong. Kosong tidak dipaksa menjadi apa pun: tanpa label, dan akses tetap penuh.
+      kind: (() => { const k = String(r[6] || '').trim().toLowerCase(); return k === 'operator' || k === 'reguler' ? k : ''; })(),
     }));
 
   usersCache = { at: Date.now(), rows };

@@ -123,7 +123,9 @@ const App = (() => {
   const stLabel = (k) => t('st_' + k);
   const actLabel = (a) => t('act_' + a);
   const roleName = (r) => t('role_' + r);
-  const tagOf = (u) => (!u.role || u.role === 'karyawan' ? (u.kind === 'operator' ? 'Operator' : 'Reguler') : roleName(u.role));
+  // Karyawan: Operator/Reguler sesuai kolom Jenis; kosong berarti tanpa label. Peran lain memakai nama perannya.
+  const tagOf = (u) => (!u.role || u.role === 'karyawan' ? (u.kind === 'operator' ? 'Operator' : u.kind === 'reguler' ? 'Reguler' : '') : roleName(u.role));
+  const subOf = (u) => ['Ops ' + (u.ops || '-'), tagOf(u)].filter(Boolean).join(' · ');
 
   const S = {
     tok: localStorage.getItem('pk_tok'),
@@ -210,7 +212,7 @@ const App = (() => {
     const nav = items.map((i) => `<button type="button" class="nav-item ${active === i.k ? 'on' : ''}" onclick="App.closeMenu();go('${i.k}')">${esc(i.label)}${i.badge ? `<span class="pill">${i.badge}</span>` : ''}</button>`).join('');
     return `<header class="top">
       <button type="button" class="menu-btn" onclick="App.openMenu()" aria-label="Menu"><span></span><span></span><span></span>${badge ? `<i class="dot">${badge}</i>` : ''}</button>
-      <div class="who-top"><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${tagOf(u)}</small></div>
+      <div class="who-top"><b>${esc(u.name)}</b><small>${esc(subOf(u))}</small></div>
       <div class="hbtns">
         <button type="button" class="icon-btn" onclick="App.toggleTheme();render()" aria-label="${prefs.theme === 'dark' ? t('theme_light') : t('theme_dark')}" title="${prefs.theme === 'dark' ? t('theme_light') : t('theme_dark')}">${prefs.theme === 'dark' ? ICON.sun : ICON.moon}</button>
         <button type="button" class="icon-btn" onclick="App.logout()" aria-label="${t('logout')}" title="${t('logout')}">${ICON.out}</button>
@@ -218,7 +220,7 @@ const App = (() => {
     </header>
     <div id="scrim" onclick="App.closeMenu()"></div>
     <aside id="drawer" aria-label="Menu">
-      <div class="d-head"><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${tagOf(u)}</small></div>
+      <div class="d-head"><b>${esc(u.name)}</b><small>${esc(subOf(u))}</small></div>
       <nav class="d-nav">${nav}</nav>
       <div class="d-foot">
         <button type="button" class="ghost sm" onclick="App.toggleLang();render()" aria-label="${t('lang_switch')}">${prefs.lang === 'id' ? 'English (EN)' : 'Bahasa Indonesia (ID)'}</button>
