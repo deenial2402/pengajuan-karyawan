@@ -21,6 +21,8 @@ const RANGE = ['cuti', 'sakit'];          // rentang tanggal
 const SHIFT_TYPES = ['sakit', 'izin'];    // hanya ini yang memakai shift
 const KINDS = ['cuti', 'sakit', 'tukar', 'tambah', 'izin'];
 const V = { tab: 'form', type: 'cuti', note: '', photos: [], reqs: [], sched: [] };
+// Operator hanya boleh Cuti dan Sakit.
+const kindsFor = () => (S.user?.kind === 'operator' ? ['cuti', 'sakit'] : KINDS);
 
 /* ---------- Login ---------- */
 function viewLogin() {
@@ -51,8 +53,9 @@ async function doLogin(e) {
 function setType(k) { V.type = k; render(); }
 
 function viewForm() {
+  if (!kindsFor().includes(V.type)) V.type = 'cuti';
   const tp = V.type, now = today();
-  const sel = [1, 2, 3].map((n) => `<option value="${n}">${t('shift')} ${n} · ${SH[n]}</option>`).join('');
+  const sel = [1, 2, 3].map((n) => `<option value="${n}">Shift ${n}</option>`).join('');
   let dates;
   if (tp === 'tukar') {
     dates = `<div class="swap">
@@ -70,7 +73,7 @@ function viewForm() {
   }
   const photoLabel = tp === 'sakit' ? t('photo_doctor') : t('photo_support');
   return `<div class="hero"><h2>${t('tab_work')}</h2></div>
-  <div class="kinds">${KINDS.map((k) => `<button type="button" class="kind ${k === tp ? 'on' : ''}" onclick="setType('${k}')"><b>${typeName(k)}</b><span>${t('hint_' + k)}</span></button>`).join('')}</div>
+  <div class="kinds">${kindsFor().map((k) => `<button type="button" class="kind ${k === tp ? 'on' : ''}" onclick="setType('${k}')"><b>${typeName(k)}</b><span>${t('hint_' + k)}</span></button>`).join('')}</div>
   <form class="sheet" onsubmit="send(event)">
     <div class="who"><span>${esc(S.user.name)}</span><span>Ops ${esc(S.user.ops || '-')}</span></div>
     ${dates}
@@ -149,6 +152,18 @@ async function showPh(id) {
 }
 
 /* ---------- Histori ---------- */
+function waText(r) {
+  const lines = [
+    `*Pengajuan ${typeName(r.type)}*`,
+    `Nama: ${r.name}`,
+    `Ops ID: ${r.ops}`,
+    `Tanggal: ${when(r)}`,
+  ];
+  if (r.shift) lines.push(`Shift: ${r.shift}`);
+  lines.push(`Alasan: ${r.note}`, `Status: ${stLabel(r.status)}`);
+  r.log.forEach((l) => lines.push(`${l.by} ${actLabel(l.action)}${l.note ? ' — ' + l.note : ''}`));
+  return lines.join('\n');
+}
 function reqCard(r) {
   const cls = ST_CLS[r.status] || '';
   return `<article class="item ${cls}">
@@ -160,6 +175,7 @@ function reqCard(r) {
     <p>${esc(r.note)}</p>
     ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">${t('view_photos', { n: r.photos })}</button>` : ''}
     ${r.log.map((l) => `<div class="log">${esc(l.by)} ${actLabel(l.action)}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
+    <div class="act"><a class="ghost sm wa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(waText(r))}">${t('btn_wa')}</a></div>
     ${r.status === 'menunggu_tl' ? `<div class="act"><button class="btn sm danger" onclick="cancelReq('${r.id}')">${t('btn_cancel')}</button></div>` : ''}
   </article>`;
 }
@@ -192,70 +208,76 @@ async function dl(el) {
 /* ---------- Tutorial ---------- */
 const TUT = {
   id: {
-    title: 'Tutorial Work Permit',
-    lead: 'Panduan singkat membuat pengajuan dan memantau prosesnya.',
+    title: 'Panduan Work Permit',
+    lead: 'Cara membuat pengajuan dan memantau statusnya.',
     sections: [
-      { h: 'Cara membuat pengajuan', steps: [
-        'Buka tab Work Permit, lalu pilih jenis pengajuan: Cuti, Sakit, Tukar Tanggal, Tambah Hari Kerja, atau Izin.',
-        'Isi tanggal. Cuti dan Sakit memakai Mulai dan Sampai. Izin dan Tambah Hari Kerja memakai satu tanggal. Tukar Tanggal memakai tanggal kerja yang ditukar dan tanggal pengganti.',
-        'Pilih shift. Shift hanya perlu diisi untuk Sakit dan Izin.',
-        'Isi Alasan dengan jelas.',
-        'Tambahkan foto pendukung jika ada (opsional, maks. 3). Khusus Sakit, foto surat dokter wajib diunggah.',
-        'Tekan Kirim. Pengajuan langsung masuk ke Team Leader.',
+      { h: 'Membuat pengajuan', steps: [
+        'Buka tab Work Permit.',
+        'Pilih jenis pengajuan. Cuti dan Sakit bisa dipilih semua karyawan. Tukar Tanggal, Tambah Hari Kerja, dan Izin hanya tersedia untuk karyawan Reguler.',
+        'Isi tanggal. Cuti dan Sakit memakai Mulai dan Sampai. Izin dan Tambah Hari Kerja cukup satu tanggal. Tukar Tanggal memakai tanggal kerja yang ingin ditukar dan tanggal pengganti.',
+        'Untuk Sakit dan Izin, pilih Shift 1, Shift 2, atau Shift 3.',
+        'Tulis alasan dengan jelas.',
+        'Tambahkan foto pendukung jika ada (opsional, maksimal 3 foto). Untuk Sakit, foto surat dokter wajib dilampirkan.',
+        'Tekan Kirim. Pengajuan Anda langsung masuk ke Team Leader.',
       ]},
-      { h: 'Aturan penting', steps: [
+      { h: 'Hal yang perlu diperhatikan', steps: [
         'Tanggal tidak boleh sebelum hari ini.',
         'Pada Tukar Tanggal, tanggal pengganti harus berbeda dari tanggal yang ditukar.',
-        'Pengajuan yang sudah dikirim tidak bisa diubah. Jika salah isi, tekan Batalkan pengajuan di tab Histori selama statusnya masih Menunggu Approval Team Leader, lalu buat pengajuan baru.',
+        'Pengajuan yang sudah dikirim tidak bisa diubah. Jika ada yang salah, buka tab Histori dan tekan Batalkan pengajuan selama statusnya masih Menunggu Approval Team Leader. Setelah itu, buat pengajuan baru.',
+        'Pengajuan yang sudah disetujui Team Leader tidak bisa dibatalkan dari aplikasi. Hubungi Team Leader Anda.',
       ]},
       { h: 'Alur pengajuan', flow: true, steps: [
-        'Kirim oleh karyawan',
+        'Anda mengirim pengajuan',
         'Menunggu Approval Team Leader',
         'Menunggu Validasi Admin',
         'Selesai',
-      ], note: 'Jika Team Leader menolak, status menjadi Ditolak Team Leader. Jika Admin mengembalikan, status menjadi Dikembalikan Admin. Keduanya dapat disertai catatan alasan. Jika Anda membatalkan sendiri, status menjadi Dibatalkan.' },
+      ], note: 'Jika ditolak Team Leader atau dikembalikan Admin, statusnya akan berubah dan alasannya tertulis di kartu pengajuan. Pengajuan yang Anda batalkan sendiri berstatus Dibatalkan.' },
       { h: 'Memantau status', steps: [
         'Buka tab Histori untuk melihat semua pengajuan Anda.',
         'Warna garis di kiri kartu menunjukkan status: oranye untuk menunggu, biru untuk menunggu validasi, hijau untuk selesai, merah untuk ditolak atau dikembalikan, dan abu-abu untuk dibatalkan.',
         'Catatan dari Team Leader atau Admin tampil di bawah kartu pengajuan.',
+        'Tekan Teruskan ke WhatsApp untuk membagikan detail pengajuan. Pilih kontak tujuan di WhatsApp, lalu kirim.',
       ]},
       { h: 'Jadwal', steps: [
-        'Buka tab Jadwal untuk melihat jadwal yang diunggah Backend.',
-        'Tekan Unduh untuk menyimpan file PDF atau foto jadwal ke perangkat Anda.',
+        'Buka tab Jadwal untuk melihat jadwal kerja terbaru.',
+        'Tekan Unduh untuk menyimpan jadwal (PDF atau foto) ke perangkat Anda.',
       ]},
     ],
   },
   en: {
-    title: 'Work Permit Tutorial',
-    lead: 'A short guide to submitting requests and tracking their progress.',
+    title: 'Work Permit Guide',
+    lead: 'How to submit requests and track their status.',
     sections: [
-      { h: 'How to submit a request', steps: [
-        'Open the Work Permit tab and choose a request type: Leave, Sick Leave, Date Swap, Extra Workday, or Permission.',
-        'Fill in the dates. Leave and Sick Leave use Start and End. Permission and Extra Workday use one date. Date Swap uses the workday to swap and the replacement date.',
-        'Choose a shift. A shift is only required for Sick Leave and Permission.',
-        'Fill in the Reason clearly.',
-        'Add supporting photos if you have any (optional, max 3). For Sick Leave, the doctor’s note photo is required.',
-        'Tap Submit. The request goes straight to your Team Leader.',
+      { h: 'Submitting a request', steps: [
+        'Open the Work Permit tab.',
+        'Choose a request type. Leave and Sick Leave are available to all employees. Date Swap, Extra Workday, and Permission are only available to Regular employees.',
+        'Fill in the dates. Leave and Sick Leave use Start and End. Permission and Extra Workday need one date. Date Swap uses the workday to swap and the replacement date.',
+        'For Sick Leave and Permission, choose Shift 1, Shift 2, or Shift 3.',
+        'Write the reason clearly.',
+        'Add supporting photos if you have any (optional, up to 3). For Sick Leave, the doctor’s note photo is required.',
+        'Tap Submit. Your request goes straight to your Team Leader.',
       ]},
-      { h: 'Important rules', steps: [
+      { h: 'Things to keep in mind', steps: [
         'Dates cannot be earlier than today.',
         'For Date Swap, the replacement date must be different from the workday to swap.',
-        'A submitted request cannot be edited. If there is a mistake, tap Cancel request in the History tab while it is still Waiting Team Leader Approval, then submit a new one.',
+        'A submitted request cannot be edited. If something is wrong, open the History tab and tap Cancel request while it is still Waiting Team Leader Approval. Then submit a new one.',
+        'A request already approved by the Team Leader cannot be cancelled in the app. Contact your Team Leader.',
       ]},
       { h: 'Request flow', flow: true, steps: [
-        'Submitted by employee',
+        'You submit the request',
         'Waiting Team Leader Approval',
         'Waiting Admin Validation',
         'Completed',
-      ], note: 'If the Team Leader rejects, the status becomes Rejected by Team Leader. If the Admin returns it, the status becomes Returned by Admin. Both can include a reason. If you cancel it yourself, the status becomes Cancelled.' },
+      ], note: 'If it is rejected by the Team Leader or returned by the Admin, the status changes and the reason appears on the request card. A request you cancel yourself is marked Cancelled.' },
       { h: 'Tracking status', steps: [
         'Open the History tab to see all of your requests.',
         'The colored stripe on each card shows the status: orange for waiting, blue for waiting validation, green for completed, red for rejected or returned, and gray for cancelled.',
         'Notes from the Team Leader or Admin appear below the request card.',
+        'Tap Forward to WhatsApp to share the request details. Pick a contact in WhatsApp, then send.',
       ]},
       { h: 'Schedule', steps: [
-        'Open the Schedule tab to see schedules uploaded by the Backend.',
-        'Tap Download to save the PDF or photo to your device.',
+        'Open the Schedule tab to see the latest work schedule.',
+        'Tap Download to save the schedule (PDF or photo) to your device.',
       ]},
     ],
   },
@@ -290,6 +312,7 @@ async function go(k) {
 }
 
 async function load() {
+  try { saveSession(S.tok, (await api('me')).user); } catch (x) { /* data sesi tetap dipakai */ }
   try { V.reqs = (await api('requests?scope=mine')).requests; } catch (x) { toast(x.message); }
   try { V.sched = (await api('jadwal')).items; } catch (x) { toast(x.message); }
   render();

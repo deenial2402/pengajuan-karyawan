@@ -16,7 +16,7 @@ const App = (() => {
       tab_queue: 'Antrian', tab_all: 'Semua', tab_recap: 'Rekap', tab_users: 'Pengguna',
       backend: 'Backend', frontend: 'Frontend',
       theme_light: 'Terang', theme_dark: 'Gelap', lang_switch: 'Ganti bahasa',
-      type_cuti: 'Cuti', type_sakit: 'Sakit', type_tukar: 'Tukar Tanggal', type_tambah: 'Tambah Hari Kerja', type_izin: 'Izin',
+      type_cuti: 'Cuti', type_sakit: 'Sakit', type_tukar: 'Tukar Tanggal', type_tambah: 'Tambah Hari Kerja', type_izin: 'Izin', btn_wa: 'Teruskan ke WhatsApp',
       hint_cuti: 'Libur pada rentang tanggal', hint_sakit: 'Tidak masuk karena sakit', hint_tukar: 'Tukar tanggal kerja dengan tanggal pengganti', hint_tambah: 'Menambah hari kerja', hint_izin: 'Tidak bisa hadir pada shift tertentu',
       start: 'Mulai', end: 'Sampai', date: 'Tanggal', shift: 'Shift',
       swap_from: 'Tanggal kerja yang ditukar', swap_to: 'Tanggal pengganti', swap_hint: 'Tanggal kerja Anda diganti ke tanggal pengganti.',
@@ -62,7 +62,7 @@ const App = (() => {
       tab_queue: 'Queue', tab_all: 'All', tab_recap: 'Recap', tab_users: 'Users',
       backend: 'Backend', frontend: 'Frontend',
       theme_light: 'Light', theme_dark: 'Dark', lang_switch: 'Change language',
-      type_cuti: 'Leave', type_sakit: 'Sick Leave', type_tukar: 'Date Swap', type_tambah: 'Extra Workday', type_izin: 'Permission',
+      type_cuti: 'Leave', type_sakit: 'Sick Leave', type_tukar: 'Date Swap', type_tambah: 'Extra Workday', type_izin: 'Permission', btn_wa: 'Forward to WhatsApp',
       hint_cuti: 'Leave over a date range', hint_sakit: 'Unable to work due to illness', hint_tukar: 'Swap a workday with a replacement date', hint_tambah: 'Add a workday', hint_izin: 'Unable to attend a specific shift',
       start: 'Start', end: 'End', date: 'Date', shift: 'Shift',
       swap_from: 'Workday to swap', swap_to: 'Replacement date', swap_hint: 'Your workday will move to the replacement date.',
@@ -117,12 +117,13 @@ const App = (() => {
   const locale = () => (prefs.lang === 'en' ? 'en-GB' : 'id-ID');
   const fd = (d) => new Date(d + 'T00:00').toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
   const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
-  const shiftTag = (n) => (n ? `<span class="sh sh${n}">${t('shift')} ${n}</span> <span class="meta">${SH[n] || ''}</span>` : '');
+  const shiftTag = (n) => (n ? `<span class="sh sh${n}">Shift ${n}</span>` : '');
   const when = (r) => (r.type === 'tukar' ? `${fd(r.from)} ⇄ ${fd(r.to)}` : r.to !== r.from ? `${fd(r.from)} – ${fd(r.to)}` : fd(r.from));
   const typeName = (k) => t('type_' + k);
   const stLabel = (k) => t('st_' + k);
   const actLabel = (a) => t('act_' + a);
   const roleName = (r) => t('role_' + r);
+  const tagOf = (u) => (!u.role || u.role === 'karyawan' ? (u.kind === 'operator' ? 'Operator' : 'Reguler') : roleName(u.role));
 
   const S = {
     tok: localStorage.getItem('pk_tok'),
@@ -180,8 +181,10 @@ const App = (() => {
   /** Watermark diagonal berisi Nama & Ops ID. */
   function watermark(u) {
     if (!u) return;
-    const txt = `${u.name} · Ops ${u.ops || u.id}`;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="340" height="170"><text x="18" y="104" transform="rotate(-24 170 85)" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="rgba(238,77,45,0.10)">${esc(txt)}</text></svg>`;
+    const dark = prefs.theme === 'dark';
+    const txt = `Confidential ${u.ops || u.id} & ${u.name}`;
+    const fill = dark ? 'rgba(255,255,255,0.24)' : 'rgba(28,26,24,0.22)';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240"><text x="8" y="124" transform="rotate(-24 240 120)" font-family="Arial,sans-serif" font-size="16" font-weight="800" letter-spacing="0.6" fill="${fill}">${esc(txt)}</text></svg>`;
     let el = document.getElementById('wm');
     if (!el) {
       el = document.createElement('div');
@@ -207,7 +210,7 @@ const App = (() => {
     const nav = items.map((i) => `<button type="button" class="nav-item ${active === i.k ? 'on' : ''}" onclick="App.closeMenu();go('${i.k}')">${esc(i.label)}${i.badge ? `<span class="pill">${i.badge}</span>` : ''}</button>`).join('');
     return `<header class="top">
       <button type="button" class="menu-btn" onclick="App.openMenu()" aria-label="Menu"><span></span><span></span><span></span>${badge ? `<i class="dot">${badge}</i>` : ''}</button>
-      <div class="who-top"><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${roleName(u.role)}</small></div>
+      <div class="who-top"><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${tagOf(u)}</small></div>
       <div class="hbtns">
         <button type="button" class="icon-btn" onclick="App.toggleTheme();render()" aria-label="${prefs.theme === 'dark' ? t('theme_light') : t('theme_dark')}" title="${prefs.theme === 'dark' ? t('theme_light') : t('theme_dark')}">${prefs.theme === 'dark' ? ICON.sun : ICON.moon}</button>
         <button type="button" class="icon-btn" onclick="App.logout()" aria-label="${t('logout')}" title="${t('logout')}">${ICON.out}</button>
@@ -215,7 +218,7 @@ const App = (() => {
     </header>
     <div id="scrim" onclick="App.closeMenu()"></div>
     <aside id="drawer" aria-label="Menu">
-      <div class="d-head"><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${roleName(u.role)}</small></div>
+      <div class="d-head"><b>${esc(u.name)}</b><small>Ops ${esc(u.ops || '-')} · ${tagOf(u)}</small></div>
       <nav class="d-nav">${nav}</nav>
       <div class="d-foot">
         <button type="button" class="ghost sm" onclick="App.toggleLang();render()" aria-label="${t('lang_switch')}">${prefs.lang === 'id' ? 'English (EN)' : 'Bahasa Indonesia (ID)'}</button>

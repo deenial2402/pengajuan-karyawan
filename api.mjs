@@ -9,6 +9,7 @@ const BACKEND_ROLES = ['tl', 'admin', 'superadmin'];
 const TYPES = ['cuti', 'sakit', 'tukar', 'tambah', 'izin'];
 const RANGE_TYPES = ['cuti', 'sakit']; // hanya ini yang boleh rentang tanggal
 const SHIFT_TYPES = ['sakit', 'izin']; // hanya ini yang memakai shift
+const OPERATOR_TYPES = ['cuti', 'sakit']; // Operator hanya boleh Cuti dan Sakit
 const T = { cuti: 'Cuti', sakit: 'Sakit', tukar: 'Tukar Tanggal', tambah: 'Tambah Hari Kerja', izin: 'Izin' };
 const ACT = { approve: 'menyetujui', reject: 'menolak', check: 'sudah memeriksa', return: 'mengembalikan', cancel: 'membatalkan' };
 const TZ = 'Asia/Jakarta'; // WIB (GMT+7)
@@ -30,7 +31,7 @@ const json = (d, s = 200) => new Response(JSON.stringify(d), { status: s, header
 const fail = (m, s = 400) => json({ error: m }, s);
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
 const fmtTime = (iso) => new Intl.DateTimeFormat('id-ID', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
-const pub = (u) => ({ id: u.id, ops: u.ops, name: u.name, role: u.role, active: u.active });
+const pub = (u) => ({ id: u.id, ops: u.ops, name: u.name, role: u.role, kind: u.kind, active: u.active });
 const safeEq = (a, b) => {
   const x = Buffer.from(a), y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
@@ -77,6 +78,7 @@ async function listRequests(u, url) {
 async function createRequest(u, req) {
   const b = await req.json().catch(() => null);
   if (!b || !TYPES.includes(b.type)) return fail('Jenis pengajuan tidak valid');
+  if (u.kind === 'operator' && !OPERATOR_TYPES.includes(b.type)) return fail('Jenis pengajuan ini tidak tersedia untuk akun Anda', 403);
 
   const from = String(b.from || '');
   if (!DATE.test(from)) return fail('Tanggal tidak valid');

@@ -1,5 +1,5 @@
 // Akses Google Sheets memakai service account.
-// - Spreadsheet Users (SHEET_ID): hanya dibaca. Kolom: A ID Login | B Ops ID | C Nama | D Userlevel | E Password | F Aktif
+// - Spreadsheet Users (SHEET_ID): hanya dibaca. Kolom: A ID Login | B Ops ID | C Nama | D Userlevel | E Password | F Aktif | G Jenis (Operator / Reguler)
 // - Spreadsheet Riwayat (HISTORY_SHEET_ID): dibaca dan ditulis. Satu tab per jenis pengajuan (Cuti, Sakit, Tukar Tanggal, Tambah Hari Kerja, Izin).
 import { createSign } from 'node:crypto';
 
@@ -93,7 +93,7 @@ export async function getUsers() {
   const tab = process.env.SHEET_TAB || 'Users';
   if (!id) throw new Error('SHEET_ID belum diatur di Netlify');
 
-  const values = await readRange(id, `${tab}!A2:F`);
+  const values = await readRange(id, `${tab}!A2:G`);
   const rows = values
     .filter((r) => String(r[0] || '').trim())
     .map((r) => ({
@@ -103,6 +103,8 @@ export async function getUsers() {
       role: String(r[3] || 'karyawan').trim().toLowerCase(),
       pin: String(r[4] || '').trim(),
       active: String(r[5] || 'Ya').trim().toLowerCase() !== 'tidak',
+      // Kosong atau tidak dikenali dianggap Reguler, agar akses tidak hilang karena kolom belum diisi.
+      kind: String(r[6] || '').trim().toLowerCase() === 'operator' ? 'operator' : 'reguler',
     }));
 
   usersCache = { at: Date.now(), rows };
