@@ -125,7 +125,9 @@ const App = (() => {
   const roleName = (r) => t('role_' + r);
   // Karyawan: Operator/Reguler sesuai kolom Jenis; kosong berarti tanpa label. Peran lain memakai nama perannya.
   const tagOf = (u) => (!u.role || u.role === 'karyawan' ? (u.kind === 'operator' ? 'Operator' : u.kind === 'reguler' ? 'Reguler' : '') : roleName(u.role));
-  const subOf = (u) => ['Ops ' + (u.ops || '-'), tagOf(u)].filter(Boolean).join(' · ');
+  // Ops ID di sheet sudah berawalan "Ops"; jangan ditambah dua kali.
+  const opsText = (u) => { const o = String(u.ops || u.id || '-').trim(); return /^ops/i.test(o) ? o : 'Ops ' + o; };
+  const subOf = (u) => [opsText(u), tagOf(u)].filter(Boolean).join(' · ');
 
   const S = {
     tok: localStorage.getItem('pk_tok'),
@@ -233,6 +235,6 @@ const App = (() => {
     openMenu, closeMenu, shell,
     S, $, esc, fd, today, shiftTag, when, toast, api, download, saveSession, logout, watermark,
     t, typeName, stLabel, actLabel, roleName, prefsBar, toggleLang, toggleTheme, prefs,
-    SH, ST_CLS, BACKEND_ROLES,
+    SH, ST_CLS, BACKEND_ROLES, opsText,
   };
 })();

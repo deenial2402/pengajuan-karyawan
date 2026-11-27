@@ -260,7 +260,8 @@ async function exportXlsx(u, url) {
   const month = url.searchParams.get('month') || 'all';
   const rows = (await visible(u, 'team')).filter((r) => month === 'all' || r.from.startsWith(month));
 
-  const who = `${u.name} · Ops ${u.ops || u.id}`;
+  const opsTxt = /^ops/i.test(String(u.ops || u.id)) ? String(u.ops || u.id) : `Ops ${u.ops || u.id}`;
+  const who = `${u.name} · ${opsTxt}`;
   const cols = [
     { h: 'No', w: 6, v: (r, i) => i + 1 },
     { h: 'Dibuat', w: 18, v: (r) => fmtTime(r.created) },
