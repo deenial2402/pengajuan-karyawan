@@ -7,7 +7,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<title>Palangka Raya DC · Backend</title>
+<title>Palangka Raya DC · Work Permit</title>
 <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
@@ -17,20 +17,21 @@
 <script>
 const { S, $, esc, fd, today, shiftTag, when, toast, api, download, saveSession, logout, watermark, t, typeName, stLabel, actLabel, roleName, prefsBar, SH, ST_CLS, BACKEND_ROLES, opsText } = App;
 
-const TABS = ['todo', 'all', 'rekap', 'sched', 'users'];
-const TAB_LABEL = { todo: 'tab_queue', all: 'tab_all', rekap: 'tab_recap', sched: 'tab_sched', users: 'tab_users' };
+const RANGE = ['cuti', 'sakit'];          // rentang tanggal
+const SHIFT_TYPES = ['sakit', 'izin'];    // hanya ini yang memakai shift
 const KINDS = ['cuti', 'sakit', 'tukar', 'tambah', 'izin'];
-const STATUSES = ['menunggu_tl', 'disetujui_tl', 'selesai', 'ditolak_tl', 'dikembalikan', 'dibatalkan'];
-const V = { tab: 'todo', reqs: [], users: null, sched: [], month: today().slice(0, 7), q: '', f: { status: '', type: '', from: '', to: '' } };
+const V = { tab: 'form', type: 'cuti', note: '', photos: [], reqs: [], sched: [] };
+// Operator hanya boleh Cuti dan Sakit.
+const kindsFor = () => (S.user?.kind === 'operator' ? ['cuti', 'sakit'] : KINDS);
 
 /* ---------- Login ---------- */
 function viewLogin() {
   return `<section class="auth">
     <div class="auth-top">${prefsBar()}</div>
     <div class="brand-mark">PKY</div>
-    <h1>${t('app_name')} · ${t('backend')}</h1>
+    <h1>${t('app_name')}</h1>
     <form class="sheet" onsubmit="doLogin(event)">
-      <p class="meta">${t('login_sub_be')}</p>
+      <p class="meta">${t('login_sub_fe')}</p>
       <label>${t('login_id')}<input name="login" autocomplete="username" autocapitalize="characters" required></label>
       <label>${t('password')}<input name="pin" type="password" autocomplete="current-password" required></label>
       <button class="btn">${t('login_btn')}</button>
@@ -42,178 +43,101 @@ async function doLogin(e) {
   const g = (n) => e.target.elements[n].value;
   try {
     const d = await api('login', { id: g('login').trim(), pin: g('pin') });
-    if (!BACKEND_ROLES.includes(d.user.role)) throw new Error(t('err_no_access'));
     saveSession(d.token, d.user);
-    V.tab = 'todo';
+    V.tab = 'form';
     await load();
   } catch (x) { toast(x.message); }
 }
 
-/* ---------- Antrian & semua pengajuan ---------- */
-function isTodo(r) {
-  const u = S.user;
-  if (u.role === 'tl') return r.status === 'menunggu_tl';
-  if (u.role === 'admin') return r.status === 'disetujui_tl';
-  if (u.role === 'superadmin') return ['menunggu_tl', 'disetujui_tl'].includes(r.status);
-  return false;
-}
+/* ---------- Work Permit (form) ---------- */
+function setType(k) { V.type = k; render(); }
 
-function card(r) {
-  const cls = ST_CLS[r.status] || '';
-  const u = S.user;
-  const tlCan = r.status === 'menunggu_tl' && (u.role === 'tl' || u.role === 'superadmin');
-  const admCan = r.status === 'disetujui_tl' && (u.role === 'admin' || u.role === 'superadmin');
-  const btn = tlCan ? ['approve', 'reject', t('btn_approve'), t('btn_reject')]
-    : admCan ? ['check', 'return', t('btn_check'), t('btn_return')] : null;
-  return `<article class="item ${cls}">
-    <div class="row1">
-      <div><h3>${typeName(r.type)} · ${esc(r.name)}</h3>
-        <div class="meta">${esc(opsText(r))} · ${when(r)}</div></div>
-      <span class="st ${cls}">${stLabel(r.status)}</span>
-    </div>
-    ${r.shift ? `<div class="meta" style="margin-top:6px">${shiftTag(r.shift)}</div>` : ''}
-    <p>${esc(r.note)}</p>
-    ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">${t('view_photos', { n: r.photos })}</button>` : ''}
-    ${r.log.map((l) => `<div class="log">${esc(l.by)} ${actLabel(l.action)}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
-    ${btn ? `<div class="act">
-      <input id="n${r.id}" placeholder="${t('note_required')}">
-      <div class="row">
-        <button class="btn sm" onclick="act('${r.id}','${btn[0]}')">${btn[2]}</button>
-        <button class="btn sm danger" onclick="act('${r.id}','${btn[1]}')">${btn[3]}</button>
-      </div></div>` : ''}
-  </article>`;
-}
-
-async function act(id, a) {
-  const note = document.getElementById('n' + id)?.value || '';
-  if (['reject', 'return'].includes(a) && !note.trim()) return toast(t('note_needed'));
-  try {
-    await api('act', { id, action: a, note });
-    toast(t('toast_saved'));
-    await load();
-  } catch (x) { toast(x.message); }
-}
-
-function matchQ(r, q) {
-  if (!q) return true;
-  const hay = [r.name, r.ops, r.uid, typeName(r.type), r.note, stLabel(r.status), r.from, r.to].filter(Boolean).join(' ').toLowerCase();
-  return q.toLowerCase().split(/\s+/).every((w) => hay.includes(w));
-}
-const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-function passF(r) {
-  const f = V.f;
-  if (f.status && r.status !== f.status) return false;
-  if (f.type && r.type !== f.type) return false;
-  if (f.from || f.to) {
-    const inR = (d) => (!f.from || d >= f.from) && (!f.to || d <= f.to);
-    const ok = r.type === 'tukar' ? inR(r.from) || inR(r.to) : (!f.to || r.from <= f.to) && (!f.from || r.to >= f.from);
-    if (!ok) return false;
+function viewForm() {
+  if (!kindsFor().includes(V.type)) V.type = 'cuti';
+  const tp = V.type, now = today();
+  const sel = [1, 2, 3].map((n) => `<option value="${n}">Shift ${n}</option>`).join('');
+  let dates;
+  if (tp === 'tukar') {
+    dates = `<div class="swap">
+        <label class="swap-card"><span>${t('swap_from')}</span><input type="date" name="from" min="${now}" value="${now}" required></label>
+        <div class="swap-arrow" aria-hidden="true">⇄</div>
+        <label class="swap-card"><span>${t('swap_to')}</span><input type="date" name="to" min="${now}" required></label>
+      </div>
+      <p class="meta" style="margin-top:6px">${t('swap_hint')}</p>`;
+  } else if (RANGE.includes(tp)) {
+    dates = `<div class="row">
+        <label>${t('start')}<input type="date" name="from" min="${now}" value="${now}" required></label>
+        <label>${t('end')}<input type="date" name="to" min="${now}" value="${now}" required></label></div>`;
+  } else {
+    dates = `<label>${t('date')}<input type="date" name="from" min="${now}" value="${now}" required></label>`;
   }
-  return true;
-}
-const filtered = () => V.reqs.filter((r) => passF(r) && matchQ(r, V.q));
-function listAll() {
-  const l = filtered();
-  return l.length ? l.map(card).join('') : `<div class="empty">${t('empty_search')}</div>`;
-}
-function refreshAll() {
-  document.getElementById('listAll').innerHTML = listAll();
-  document.getElementById('cnt').textContent = t('flt_count', { n: filtered().length });
-}
-function setF(k, v) { V.f[k] = v; render(); }
-function quick(k) {
-  const td = today();
-  if (k === 'today') { V.f.from = td; V.f.to = td; }
-  else {
-    const mon = addDays(td, -((new Date(td + 'T00:00:00Z').getUTCDay() + 6) % 7));
-    V.f.from = mon; V.f.to = addDays(mon, 6);
-  }
-  render();
-}
-function resetF() { V.f = { status: '', type: '', from: '', to: '' }; V.q = ''; render(); }
-function viewTodo() {
-  const l = V.reqs.filter(isTodo);
-  return `<h2>${t('queue_title')}</h2>${l.length ? l.map(card).join('') : `<div class="empty">${t('empty_queue')}</div>`}`;
-}
-function viewAll() {
-  return `<h2>${t('all_title')}</h2>
-  <input type="search" placeholder="${t('search_ph')}" value="${esc(V.q)}" oninput="V.q=this.value;refreshAll()" style="margin-bottom:8px">
-  <div class="filters">
-    <div class="row">
-      <select onchange="setF('status',this.value)" aria-label="Status"><option value="">${t('flt_all_status')}</option>${STATUSES.map((k) => `<option value="${k}" ${V.f.status === k ? 'selected' : ''}>${stLabel(k)}</option>`).join('')}</select>
-      <select onchange="setF('type',this.value)" aria-label="${t('flt_all_type')}"><option value="">${t('flt_all_type')}</option>${KINDS.map((k) => `<option value="${k}" ${V.f.type === k ? 'selected' : ''}>${typeName(k)}</option>`).join('')}</select>
+  const photoLabel = tp === 'sakit' ? t('photo_doctor') : t('photo_support');
+  return `<div class="hero"><h2>${t('tab_work')}</h2></div>
+  <div class="kinds">${kindsFor().map((k) => `<button type="button" class="kind ${k === tp ? 'on' : ''}" onclick="setType('${k}')"><b>${typeName(k)}</b><span>${t('hint_' + k)}</span></button>`).join('')}</div>
+  <form class="sheet" onsubmit="send(event)">
+    <div class="who"><span>${esc(S.user.name)}</span><span>${esc(opsText(S.user))}</span></div>
+    ${dates}
+    ${SHIFT_TYPES.includes(tp) ? `<label>${t('shift')}<select name="shift">${sel}</select></label>` : ''}
+    <label>${t('reason')}<textarea name="note" required oninput="V.note=this.value">${esc(V.note)}</textarea></label>
+    <div class="field">
+      <span class="lbl">${photoLabel} ${tp === 'sakit' ? t('photo_hint_req') : t('photo_hint')}</span>
+      <input id="fi" type="file" accept="image/*" multiple hidden onchange="addPh(this)">
+      <button type="button" class="ghost" onclick="$('#fi').click()">${t('upload_photo')}</button>
+      <div class="thumbs">${V.photos.map((p, i) => `<div><img src="${p}" alt=""><button type="button" onclick="rmPh(${i})" aria-label="×">×</button></div>`).join('')}</div>
     </div>
-    <div class="row">
-      <label><span>${t('flt_from')}</span><input type="date" value="${V.f.from}" onchange="setF('from',this.value)"></label>
-      <label><span>${t('flt_to')}</span><input type="date" value="${V.f.to}" onchange="setF('to',this.value)"></label>
-    </div>
-    <div class="chips">
-      <button type="button" class="ghost sm" onclick="quick('today')">${t('flt_today')}</button>
-      <button type="button" class="ghost sm" onclick="quick('week')">${t('flt_week')}</button>
-      <button type="button" class="ghost sm" onclick="resetF()">${t('flt_reset')}</button>
-    </div>
-  </div>
-  <div class="meta" id="cnt" style="margin-bottom:10px">${t('flt_count', { n: filtered().length })}</div>
-  <div id="listAll">${V.reqs.length ? listAll() : `<div class="empty">${t('empty_all')}</div>`}</div>`;
+    <button class="btn">${t('btn_send')}</button>
+  </form>`;
 }
 
-/* ---------- Jadwal (unggah & hapus) ---------- */
-function viewSched() {
-  return `<h2>${t('sched_head')}</h2>
-  <form class="sheet" onsubmit="uploadSched(event)">
-    <h3>${t('sched_upload')}</h3>
-    <label>${t('sched_title')}<input name="title" required></label>
-    <label>${t('sched_file')}<input name="file" type="file" accept="application/pdf,image/*" required></label>
-    <button class="btn">${t('btn_upload')}</button>
-  </form>
-  ${V.sched.length ? V.sched.map((s) => `<article class="item" style="margin-top:10px">
-      <div class="row1"><div><h3>${esc(s.title)}</h3><div class="meta">${esc(s.name)} · ${t('uploaded_on')} ${fd(s.created.slice(0, 10))} ${t('by')} ${esc(s.by || '-')}</div></div></div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost sm" data-id="${s.id}" data-name="${esc(s.name)}" onclick="dl(this)">${t('btn_download')}</button>
-        <button class="btn sm danger" data-id="${s.id}" onclick="delSched(this)">${t('btn_delete')}</button>
-      </div></article>`).join('') : `<div class="empty">${t('sched_empty')}</div>`}`;
-}
-
-function readDataUrl(file) {
-  return new Promise((ok, no) => {
-    const r = new FileReader();
-    r.onload = () => ok(r.result);
-    r.onerror = () => no(new Error('File tidak bisa dibaca'));
-    r.readAsDataURL(file);
-  });
-}
-
-async function uploadSched(e) {
+async function send(e) {
   e.preventDefault();
-  const f = e.target;
-  const file = f.elements.file.files[0];
-  if (!file) return;
-  if (file.size > 4 * 1024 * 1024) return toast(t('err_file_big'));
+  const g = (n) => e.target.elements[n]?.value;
+  const body = {
+    type: V.type,
+    from: g('from'),
+    to: g('to') || g('from'),
+    shift: g('shift'),
+    note: g('note'),
+    photos: V.photos,
+  };
+  if (body.type === 'tukar' && body.from === body.to) return toast(t('err_same_date'));
+  if (body.type === 'sakit' && !V.photos.length) return toast(t('err_photo_sick'));
   try {
-    const data = await readDataUrl(file);
-    await api('jadwal', { title: f.elements.title.value.trim(), name: file.name, mime: file.type, data });
-    toast(t('sched_ok'));
-    V.sched = (await api('jadwal')).items;
-    render();
+    await api('requests', body);
+    toast(t('toast_sent'));
+    V.photos = [];
+    V.note = '';
+    V.tab = 'list';
+    await load();
   } catch (x) { toast(x.message); }
-}
-
-async function delSched(el) {
-  if (!confirm(t('sched_confirm'))) return;
-  try {
-    await api('jadwal/' + encodeURIComponent(el.dataset.id), null, { method: 'DELETE' });
-    toast(t('sched_deleted'));
-    V.sched = (await api('jadwal')).items;
-    render();
-  } catch (x) { toast(x.message); }
-}
-
-async function dl(el) {
-  try { await download(el.dataset.id, el.dataset.name); toast(t('toast_downloaded')); }
-  catch (x) { toast(x.message); }
 }
 
 /* ---------- Foto ---------- */
+function shrink(f) {
+  return new Promise((ok, no) => {
+    const im = new Image(), url = URL.createObjectURL(f);
+    im.onload = () => {
+      const k = Math.min(1, 1100 / Math.max(im.width, im.height));
+      const c = document.createElement('canvas');
+      c.width = im.width * k; c.height = im.height * k;
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      ok(c.toDataURL('image/jpeg', 0.7));
+    };
+    im.onerror = () => no(new Error('Foto tidak bisa dibaca'));
+    im.src = url;
+  });
+}
+async function addPh(el) {
+  for (const f of [...el.files]) {
+    if (V.photos.length >= 3) { toast('Maks. 3 foto'); break; }
+    try { V.photos.push(await shrink(f)); } catch (x) { toast(x.message); }
+  }
+  el.value = '';
+  render();
+}
+function rmPh(i) { V.photos.splice(i, 1); render(); }
+
 async function showPh(id) {
   try {
     const p = await api('photos/' + id);
@@ -227,101 +151,170 @@ async function showPh(id) {
   } catch (x) { toast(x.message); }
 }
 
-/* ---------- Rekap & ekspor ---------- */
-function viewRekap() {
-  const [Y, M] = V.month.split('-').map(Number), n = new Date(Y, M, 0).getDate();
-  const SHIFT_K = ['sakit', 'izin'];
-  const nm = { cuti: typeName('cuti'), sakit: typeName('sakit'), izin: typeName('izin') };
-  const A = {}, tot = { 1: {}, 2: {}, 3: {} }, cutiAll = { hari: 0 };
-  V.reqs.filter((r) => ['cuti', 'sakit', 'izin'].includes(r.type) && !['ditolak_tl', 'dikembalikan', 'dibatalkan'].includes(r.status))
-    .forEach((r) => {
-      for (let d = 1; d <= n; d++) {
-        const ds = `${V.month}-${String(d).padStart(2, '0')}`;
-        if (ds < r.from || ds > r.to) continue;
-        A[ds] = A[ds] || { shift: {}, cuti: 0 };
-        if (r.type === 'cuti') { A[ds].cuti++; cutiAll.hari++; continue; }
-        if (!r.shift) continue;
-        A[ds].shift[r.shift] = A[ds].shift[r.shift] || {};
-        A[ds].shift[r.shift][r.type] = (A[ds].shift[r.shift][r.type] || 0) + 1;
-        tot[r.shift][r.type] = (tot[r.shift][r.type] || 0) + 1;
-      }
-    });
-  const dom = (c) => (c ? Object.entries(c).sort((a, b) => b[1] - a[1])[0] : null);
-  const cell = (c) => { const d = dom(c); return d ? `<span class="t-${d[0]}">${nm[d[0]]} ${d[1]}</span>` : '–'; };
-  const rows = Object.keys(A).sort().map((ds) => `<tr><td>${fd(ds)}</td>${[1, 2, 3].map((s) => `<td>${cell(A[ds].shift[s])}</td>`).join('')}<td>${A[ds].cuti ? `<span class="t-cuti">${nm.cuti} ${A[ds].cuti}</span>` : '–'}</td></tr>`).join('');
-
-  return `<h2>${t('rekap_title')}</h2>
-  <label style="margin-top:0">${t('month')}<input type="month" value="${V.month}" onchange="V.month=this.value;render()"></label>
-  <div class="row" style="margin:12px 0 16px">
-    <button class="ghost sm" onclick="exp(V.month)">${t('export_month')}</button>
-    <button class="ghost sm" onclick="exp('all')">${t('export_all')}</button>
-  </div>
-  <p class="meta">${t('recap_note')}</p>
-  <div class="grid3" style="margin-top:12px">${[1, 2, 3].map((s) => {
-    const tt = tot[s] || {}, sum = SHIFT_K.reduce((a, k) => a + (tt[k] || 0), 0), d = dom(tt);
-    return `<div class="sheet" style="margin-top:0"><div>${shiftTag(s)}</div>
-      <div class="big ${d ? 't-' + d[0] : ''}">${d ? nm[d[0]] : t('recap_none')}</div>
-      <div class="meta">${sum} ${t('hari_orang')}</div>
-      <div class="bar">${SHIFT_K.map((k) => `<i style="width:${sum ? (tt[k] || 0) / sum * 100 : 0}%;background:var(--${k === 'sakit' ? 'wait' : 'info'})"></i>`).join('')}</div>
-      <div class="meta">${SHIFT_K.map((k) => `${nm[k]} ${tt[k] || 0}`).join(' · ')}</div></div>`;
-  }).join('')}
-  <div class="sheet" style="margin-top:0"><div class="sh">${nm.cuti}</div>
-      <div class="big t-cuti">${cutiAll.hari} ${t('hari_orang')}</div>
-      <div class="meta">${t('cuti_per_hari')}</div></div></div>
-  <div class="sheet"><h3>${t('per_tanggal')}</h3><div class="tbl">${rows
-    ? `<table><tr><th>${t('date_col')}</th><th>${t('shift')} 1</th><th>${t('shift')} 2</th><th>${t('shift')} 3</th><th>${nm.cuti}</th></tr>${rows}</table>`
-    : `<div class="empty">${t('recap_nodata')}</div>`}</div></div>`;
+/* ---------- Histori ---------- */
+function waText(r) {
+  const lines = [
+    `*Pengajuan ${typeName(r.type)}*`,
+    `Nama: ${r.name}`,
+    `Ops ID: ${r.ops}`,
+    `Tanggal: ${when(r)}`,
+  ];
+  if (r.shift) lines.push(`Shift: ${r.shift}`);
+  lines.push(`Alasan: ${r.note}`, `Status: ${stLabel(r.status)}`);
+  r.log.forEach((l) => lines.push(`${l.by} ${actLabel(l.action)}${l.note ? ' — ' + l.note : ''}`));
+  return lines.join('\n');
 }
-
-async function exp(m) {
+function reqCard(r) {
+  const cls = ST_CLS[r.status] || '';
+  return `<article class="item ${cls}">
+    <div class="row1">
+      <div><h3>${typeName(r.type)}</h3><div class="meta">${when(r)}</div></div>
+      <span class="st ${cls}">${stLabel(r.status)}</span>
+    </div>
+    ${r.shift ? `<div class="meta" style="margin-top:6px">${shiftTag(r.shift)}</div>` : ''}
+    <p>${esc(r.note)}</p>
+    ${r.photos ? `<button class="ghost sm" onclick="showPh('${r.id}')">${t('view_photos', { n: r.photos })}</button>` : ''}
+    ${r.log.map((l) => `<div class="log">${esc(l.by)} ${actLabel(l.action)}${l.note ? ' — ' + esc(l.note) : ''}</div>`).join('')}
+    <div class="act"><a class="wa-btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(waText(r))}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg><span>${t('btn_wa')}</span></a></div>
+    ${r.status === 'menunggu_tl' ? `<div class="act"><button class="btn sm danger" onclick="cancelReq('${r.id}')">${t('btn_cancel')}</button></div>` : ''}
+  </article>`;
+}
+async function cancelReq(id) {
+  if (!confirm(t('cancel_confirm'))) return;
   try {
-    const r = await fetch('/api/export?month=' + encodeURIComponent(m), { headers: { authorization: 'Bearer ' + S.tok } });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Gagal ekspor');
-    const url = URL.createObjectURL(await r.blob());
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `rekap-pengajuan-${m}.xlsx`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    toast(t('toast_recap'));
+    await api('cancel', { id });
+    toast(t('toast_cancelled'));
+    await load();
   } catch (x) { toast(x.message); }
 }
+function viewList() {
+  return `<h2>${t('tab_hist')}</h2>${V.reqs.length ? V.reqs.map(reqCard).join('') : `<div class="empty">${t('empty_hist')}</div>`}`;
+}
 
-/* ---------- Pengguna (sumber: spreadsheet, hanya baca) ---------- */
-function viewUsers() {
-  const us = V.users || [];
-  return `<h2>${t('tab_users')}</h2>
-  <p class="meta">${t('users_note')}</p>
-  <div class="sheet">${us.length ? us.map((x) => `<div style="padding:10px 0;border-bottom:1px solid var(--rule)">
-      <b>${esc(x.name)}</b> <span class="meta">${esc(x.id)} · ${roleName(x.role)}${x.active ? '' : ' · <span style="color:var(--bad)">' + t('nonaktif') + '</span>'}</span>
-    </div>`).join('') : `<div class="empty">${t('no_data')}</div>`}</div>`;
+/* ---------- Jadwal (unduh saja) ---------- */
+function viewSched() {
+  return `<h2>${t('sched_head')}</h2>
+  <p class="meta">${t('sched_hint')}</p>
+  ${V.sched.length ? V.sched.map((s) => `<article class="item">
+      <div class="row1"><div><h3>${esc(s.title)}</h3><div class="meta">${esc(s.name)} · ${t('uploaded_on')} ${fd(s.created.slice(0, 10))}</div></div></div>
+      <button class="btn sm" style="margin-top:10px" data-id="${s.id}" data-name="${esc(s.name)}" onclick="dl(this)">${t('btn_download')}</button>
+    </article>`).join('') : `<div class="empty">${t('sched_empty')}</div>`}`;
+}
+async function dl(el) {
+  try { await download(el.dataset.id, el.dataset.name); toast(t('toast_downloaded')); }
+  catch (x) { toast(x.message); }
+}
+
+/* ---------- Tutorial ---------- */
+const TUT = {
+  id: {
+    title: 'Panduan Work Permit',
+    lead: 'Cara membuat pengajuan dan memantau statusnya.',
+    sections: [
+      { h: 'Membuat pengajuan', steps: [
+        'Buka tab Work Permit.',
+        'Pilih jenis pengajuan. Cuti dan Sakit bisa dipilih semua karyawan. Tukar Tanggal, Tambah Hari Kerja, dan Izin hanya tersedia untuk karyawan Reguler.',
+        'Isi tanggal. Cuti dan Sakit memakai Mulai dan Sampai. Izin dan Tambah Hari Kerja cukup satu tanggal. Tukar Tanggal memakai tanggal kerja yang ingin ditukar dan tanggal pengganti.',
+        'Untuk Sakit dan Izin, pilih Shift 1, Shift 2, atau Shift 3.',
+        'Tulis alasan dengan jelas.',
+        'Tambahkan foto pendukung jika ada (opsional, maksimal 3 foto). Untuk Sakit, foto surat dokter wajib dilampirkan.',
+        'Tekan Kirim. Pengajuan Anda langsung masuk ke Team Leader.',
+      ]},
+      { h: 'Hal yang perlu diperhatikan', steps: [
+        'Tanggal tidak boleh sebelum hari ini.',
+        'Pada Tukar Tanggal, tanggal pengganti harus berbeda dari tanggal yang ditukar.',
+        'Pengajuan yang sudah dikirim tidak bisa diubah. Jika ada yang salah, buka tab Histori dan tekan Batalkan pengajuan selama statusnya masih Menunggu Approval Team Leader. Setelah itu, buat pengajuan baru.',
+        'Pengajuan yang sudah disetujui Team Leader tidak bisa dibatalkan dari aplikasi. Hubungi Team Leader Anda.',
+      ]},
+      { h: 'Alur pengajuan', flow: true, steps: [
+        'Anda mengirim pengajuan',
+        'Menunggu Approval Team Leader',
+        'Menunggu Validasi Admin',
+        'Selesai',
+      ], note: 'Jika ditolak Team Leader atau dikembalikan Admin, statusnya akan berubah dan alasannya tertulis di kartu pengajuan. Pengajuan yang Anda batalkan sendiri berstatus Dibatalkan.' },
+      { h: 'Memantau status', steps: [
+        'Buka tab Histori untuk melihat semua pengajuan Anda.',
+        'Warna garis di kiri kartu menunjukkan status: oranye untuk menunggu, biru untuk menunggu validasi, hijau untuk selesai, merah untuk ditolak atau dikembalikan, dan abu-abu untuk dibatalkan.',
+        'Catatan dari Team Leader atau Admin tampil di bawah kartu pengajuan.',
+        'Tekan Teruskan ke WhatsApp untuk membagikan detail pengajuan. Pilih kontak tujuan di WhatsApp, lalu kirim.',
+      ]},
+      { h: 'Jadwal', steps: [
+        'Buka tab Jadwal untuk melihat jadwal kerja terbaru.',
+        'Tekan Unduh untuk menyimpan jadwal (PDF atau foto) ke perangkat Anda.',
+      ]},
+    ],
+  },
+  en: {
+    title: 'Work Permit Guide',
+    lead: 'How to submit requests and track their status.',
+    sections: [
+      { h: 'Submitting a request', steps: [
+        'Open the Work Permit tab.',
+        'Choose a request type. Leave and Sick Leave are available to all employees. Date Swap, Extra Workday, and Permission are only available to Regular employees.',
+        'Fill in the dates. Leave and Sick Leave use Start and End. Permission and Extra Workday need one date. Date Swap uses the workday to swap and the replacement date.',
+        'For Sick Leave and Permission, choose Shift 1, Shift 2, or Shift 3.',
+        'Write the reason clearly.',
+        'Add supporting photos if you have any (optional, up to 3). For Sick Leave, the doctor’s note photo is required.',
+        'Tap Submit. Your request goes straight to your Team Leader.',
+      ]},
+      { h: 'Things to keep in mind', steps: [
+        'Dates cannot be earlier than today.',
+        'For Date Swap, the replacement date must be different from the workday to swap.',
+        'A submitted request cannot be edited. If something is wrong, open the History tab and tap Cancel request while it is still Waiting Team Leader Approval. Then submit a new one.',
+        'A request already approved by the Team Leader cannot be cancelled in the app. Contact your Team Leader.',
+      ]},
+      { h: 'Request flow', flow: true, steps: [
+        'You submit the request',
+        'Waiting Team Leader Approval',
+        'Waiting Admin Validation',
+        'Completed',
+      ], note: 'If it is rejected by the Team Leader or returned by the Admin, the status changes and the reason appears on the request card. A request you cancel yourself is marked Cancelled.' },
+      { h: 'Tracking status', steps: [
+        'Open the History tab to see all of your requests.',
+        'The colored stripe on each card shows the status: orange for waiting, blue for waiting validation, green for completed, red for rejected or returned, and gray for cancelled.',
+        'Notes from the Team Leader or Admin appear below the request card.',
+        'Tap Forward to WhatsApp to share the request details. Pick a contact in WhatsApp, then send.',
+      ]},
+      { h: 'Schedule', steps: [
+        'Open the Schedule tab to see the latest work schedule.',
+        'Tap Download to save the schedule (PDF or photo) to your device.',
+      ]},
+    ],
+  },
+};
+
+function viewTutorial() {
+  const c = TUT[App.prefs.lang] || TUT.id;
+  return `<h2>${c.title}</h2><p class="meta" style="margin-bottom:8px">${c.lead}</p>
+  ${c.sections.map((sec) => `<section class="sheet">
+      <h3>${sec.h}</h3>
+      ${sec.flow
+        ? `<div class="flow">${sec.steps.map((s, i) => `${i ? '<span class="arrow" aria-hidden="true">→</span>' : ''}<span class="fstep">${s}</span>`).join('')}</div>${sec.note ? `<p class="meta" style="margin-top:10px">${sec.note}</p>` : ''}`
+        : `<ol class="steps">${sec.steps.map((s) => `<li>${s}</li>`).join('')}</ol>`}
+    </section>`).join('')}`;
 }
 
 /* ---------- Kerangka ---------- */
 function render() {
   const u = S.user;
   if (!u) { $('#app').innerHTML = viewLogin(); return; }
-  const count = V.reqs.filter(isTodo).length;
-  const body = V.tab === 'todo' ? viewTodo() : V.tab === 'all' ? viewAll() : V.tab === 'rekap' ? viewRekap() : V.tab === 'sched' ? viewSched() : viewUsers();
-  const items = TABS.map((k) => ({ k, label: t(TAB_LABEL[k]), badge: k === 'todo' ? count : 0 }));
-  $('#app').innerHTML = App.shell({ u, items, active: V.tab, badge: count, link: { href: '/', label: t('frontend') } }) +
-    `<main>${body}</main>`;
+  const items = [['form', t('tab_work')], ['list', t('tab_hist')], ['sched', t('tab_sched')], ['tutorial', t('tab_tutorial')]].map(([k, label]) => ({ k, label }));
+  const body = V.tab === 'form' ? viewForm() : V.tab === 'list' ? viewList() : V.tab === 'sched' ? viewSched() : viewTutorial();
+  const link = BACKEND_ROLES.includes(u.role) ? { href: '/backend/', label: t('backend') } : null;
+  $('#app').innerHTML = App.shell({ u, items, active: V.tab, link }) + `<main>${body}</main>`;
   watermark(u);
 }
 
 async function go(k) {
   V.tab = k;
-  if (k === 'users' && !V.users) {
-    try { V.users = (await api('users')).users; } catch (x) { toast(x.message); }
-  }
-  if (k === 'sched') {
-    try { V.sched = (await api('jadwal')).items; } catch (x) { toast(x.message); }
-  }
+  if (k === 'list' || k === 'sched') return load();
   render();
 }
 
 async function load() {
-  try { V.reqs = (await api('requests?scope=team')).requests; } catch (x) { toast(x.message); }
+  try { saveSession(S.tok, (await api('me')).user); } catch (x) { /* data sesi tetap dipakai */ }
+  try { V.reqs = (await api('requests?scope=mine')).requests; } catch (x) { toast(x.message); }
+  try { V.sched = (await api('jadwal')).items; } catch (x) { toast(x.message); }
   render();
 }
 
