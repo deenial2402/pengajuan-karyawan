@@ -69,7 +69,7 @@ function viewForm() {
     dates = `<label>${t('date')}<input type="date" name="from" min="${now}" value="${now}" required></label>`;
   }
   const photoLabel = tp === 'sakit' ? t('photo_doctor') : t('photo_support');
-  return `<h2>${t('tab_work')}</h2>
+  return `<div class="hero"><h2>${t('tab_work')}</h2></div>
   <div class="kinds">${KINDS.map((k) => `<button type="button" class="kind ${k === tp ? 'on' : ''}" onclick="setType('${k}')"><b>${typeName(k)}</b><span>${t('hint_' + k)}</span></button>`).join('')}</div>
   <form class="sheet" onsubmit="send(event)">
     <div class="who"><span>${esc(S.user.name)}</span><span>Ops ${esc(S.user.ops || '-')}</span></div>
